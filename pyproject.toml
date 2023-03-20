@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "poetry_masterthesis"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.8, <=3.11"
+jupyter = "^1.0.0"
+earthengine-api = "^0.1.337"
+folium = "^0.14.0"
+terracatalogueclient = {version = "^0.1.14", source = "terracatalogueclient"}
+geojson = {version = "^3.0.0", source = "pypi"}
+geopandas = "^0.12.2"
+
+[tool.poetry.dev-dependencies]
+
+[[tool.poetry.source]]
+name = "terracatalogueclient"
+url = "https://artifactory.vgt.vito.be/api/pypi/python-packages/simple"
+default = false
+secondary = true
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
