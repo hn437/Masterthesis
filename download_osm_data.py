@@ -8,7 +8,7 @@ import geopandas as gpd
 import requests
 from shapely.geometry import box
 
-from config import TERRADIR, APIENDPOINT, TIME, FILTERPATH, CONFICENCEDICT
+from config import TERRADIR, APIENDPOINT, TIME, FILTERPATH, CONFICENCEDICT, BUFFERSIZES
 
 
 def get_tilename(file: str) -> str:
@@ -24,18 +24,20 @@ def get_extent(file: str) -> FeatureCollection:
     return feature_collection
 
 
-def get_confidence(path) -> dict:
+def load_dict(path) -> dict:
     d = {}
     with open(path) as f:
         for line in f:
-            (key, val) = line.split("=")
+            (key, val) = line.split(",")
             d[key] = int(val)
 
     return d
 
 
-def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, confidence_dict: dict) -> gpd.GeoDataFrame:
+def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, confidence_dict: dict, buffer_dict: dict) -> gpd.GeoDataFrame:
     df_of_features = gpd.GeoDataFrame()
+    buffered_linefeatures = gpd.GeoDataFrame()
+
     with open(path_to_filter) as f:
         lines = f.readlines()
 
@@ -77,11 +79,20 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
                 else:
                     datapart.at[index, "confidence"] = int(1)
             else:
-                # assign confidence level
-                datapart.at[index, "confidence"] = int(2)
-
                 # iterate over features to buffer the lines
+                #TODO: fix this - add buffer
+                buffer_dist = None
+                for key in used_keys:
+                    combined_key = f"{key}={row[key][index]}"
+                    if combined_key in buffer_dict:
+                        buffer_dist = buffer_dict[combined_key]
+                if buffer_dist is not None:
+                    row['geometry'] = row.geometry.buffer(buffer_dist)
+                    buffered_linefeatures = pandas.concat([buffered_linefeatures, row])
 
+        if counter ==1:
+            datapart = buffered_linefeatures
+            datapart["confidence"] = int(2)
 
         df_of_features = pandas.concat([df_of_features, datapart])
         counter += 1
@@ -89,9 +100,9 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
     return df_of_features
 
 
-def query_builtup_data(tilename, extent, confidence_dict):
+def query_builtup_data(tilename, extent, confidence_dict, buffer_dict):
     path_to_filter = FILTERPATH + "builtup.txt"
-    builtup_df = query_ohsome(path_to_filter, TIME, extent, confidence_dict)
+    builtup_df = query_ohsome(path_to_filter, TIME, extent, confidence_dict, buffer_dict)
 
     # TODO: remove below
     with open('./data/test/gdf.geojson', "w") as f:
@@ -113,8 +124,9 @@ def main():
 
         tilename = get_tilename(file)
         bound_featurecol = get_extent(file)
-        confidence_dict = get_confidence(CONFICENCEDICT)
-        query_builtup_data(tilename, bound_featurecol, confidence_dict)
+        confidence_dict = load_dict(CONFICENCEDICT)
+        buffer_dict = load_dict(BUFFERSIZES)
+        query_builtup_data(tilename, bound_featurecol, confidence_dict, buffer_dict)
 
         print(f"finished with {file}")
         break
