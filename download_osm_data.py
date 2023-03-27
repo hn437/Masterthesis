@@ -8,7 +8,7 @@ import geopandas as gpd
 import requests
 from shapely.geometry import box
 
-from config import TERRADIR, APIENDPOINT, TIME, FILTERPATH
+from config import TERRADIR, APIENDPOINT, TIME, FILTERPATH, CONFICENCEDICT
 
 
 def get_tilename(file: str) -> str:
@@ -24,23 +24,30 @@ def get_extent(file: str) -> FeatureCollection:
     return feature_collection
 
 
-def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection) -> gpd.GeoDataFrame:
+def get_confidence(path) -> dict:
+    d = {}
+    with open(path) as f:
+        for line in f:
+            (key, val) = line.split("=")
+            d[key] = int(val)
+
+    return d
+
+
+def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, confidence_dict: dict) -> gpd.GeoDataFrame:
     df_of_features = gpd.GeoDataFrame()
     with open(path_to_filter) as f:
         lines = f.readlines()
 
-    confidence = 1
+    counter = 0
     for line in lines:
         osmfilter = line
-        if len(osmfilter) != 0 and confidence != 4:
+        if len(osmfilter) != 0 and counter == 0:
             filterquery = f"({osmfilter}) and geometry:polygon"
-        elif len(osmfilter) != 0 and confidence == 4:
-            #TODO: fix this
-            # confidence muss runter. Auf 2?
-            print("linefeature")
-            filterquery = f"(lake=seilersee) and geometry:line"
+        elif len(osmfilter) != 0 and counter == 1:
+            filterquery = f"({osmfilter}) and geometry:line"
         else:
-            confidence += 1
+            counter += 1
             continue
 
         data = {"bpolys": geojson.dumps(extent), "time": time, "filter": filterquery, "properties": "tags"}
@@ -48,17 +55,43 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection) -> g
         response.raise_for_status()
 
         datapart = gpd.GeoDataFrame.from_features(response.json()['features'])
-        datapart['confidence'] = confidence
-        df_of_features = pandas.concat([df_of_features, datapart])
 
-        confidence += 1
+        # dropping all columns (= OSM Keys) not queried
+        column_names = datapart.columns.values.tolist()[3:]
+        confidence_keys = [key for key in confidence_dict]
+        col_to_drop = list(set(column_names) - set(confidence_keys))
+        datapart = datapart.drop(columns=col_to_drop)
+
+        # iterate over features to assign confidence level and buffer lines
+        for index in datapart.index:
+            row = datapart.loc[[index]]
+            row = row[row.columns[~row.isnull().all()]]
+            used_keys  = row.columns.values.tolist()[3:]
+
+            if counter == 0:
+            # iterate over features to assign confidence level of polygons
+                if any(i in used_keys for i in [k for k, v in confidence_dict.items() if v == 3]):
+                    datapart.at[index, "confidence"] = int(3)
+                elif any(i in used_keys for i in [k for k, v in confidence_dict.items() if v == 2]):
+                    datapart.at[index, "confidence"] = int(2)
+                else:
+                    datapart.at[index, "confidence"] = int(1)
+            else:
+                # assign confidence level
+                datapart.at[index, "confidence"] = int(2)
+
+                # iterate over features to buffer the lines
+
+
+        df_of_features = pandas.concat([df_of_features, datapart])
+        counter += 1
 
     return df_of_features
 
 
-def query_builtup_data(tilename, extent):
+def query_builtup_data(tilename, extent, confidence_dict):
     path_to_filter = FILTERPATH + "builtup.txt"
-    builtup_df = query_ohsome(path_to_filter, TIME, extent)
+    builtup_df = query_ohsome(path_to_filter, TIME, extent, confidence_dict)
 
     # TODO: remove below
     with open('./data/test/gdf.geojson', "w") as f:
@@ -69,7 +102,7 @@ def query_builtup_data(tilename, extent):
     """
     Zeit anpassen der abfrage
     jetzt habe ich alle, will das ja aber nicht, sondern in klassen. also muss ich filter schon aufteilen?
-    line_feature fehlen
+    line_feature müssen gebuffert werden
     dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
     """
 
@@ -77,9 +110,12 @@ def query_builtup_data(tilename, extent):
 def main():
     for file in os.listdir(TERRADIR + "Maps/"):
         print(f"started with {file}")
+
         tilename = get_tilename(file)
         bound_featurecol = get_extent(file)
-        query_builtup_data(tilename, bound_featurecol)
+        confidence_dict = get_confidence(CONFICENCEDICT)
+        query_builtup_data(tilename, bound_featurecol, confidence_dict)
+
         print(f"finished with {file}")
         break
 
