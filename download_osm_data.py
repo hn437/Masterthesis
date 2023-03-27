@@ -80,7 +80,7 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
                     datapart.at[index, "confidence"] = int(1)
             else:
                 # iterate over features to buffer the lines
-                #TODO: fix this - add buffer
+
                 buffer_dist = None
                 for key in used_keys:
                     combined_key = f"{key}={row[key][index]}"
