@@ -1,5 +1,14 @@
 # Masterthesis
 
+## Filter Setting:
+### Filter Format
+Needs to be xyz. \
+Divided by ```,```, not ```=```
+
+### Buffer Setting 
+Width of lines must be the total width the line should be, not per Lane of road or radius.
+The required Unit is Meters.
+
 ## Troubleshooting:
 ### Poetry Installation
 If Poetry fails to install with the following error message:
