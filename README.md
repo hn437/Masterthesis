@@ -1,5 +1,8 @@
 # Masterthesis
 
+## General Function
+Takes Area of Interest, downloads Terradata for it, downloads OSM data and processes it
+
 ## Filter Setting:
 ### Filter Format
 Needs to be xyz. \
