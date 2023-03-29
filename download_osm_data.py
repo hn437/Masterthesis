@@ -5,12 +5,22 @@ import geopandas as gpd
 import pandas
 import rasterio
 import requests
+import rioxarray
+from geocube.api.core import make_geocube
 from geojson import Feature, FeatureCollection
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 from shapely.geometry import box
 
-from config import APIENDPOINT, BUFFERSIZES, CONFICENCEDICT, FILTERPATH, TERRADIR, TIME
+from config import (
+    APIENDPOINT,
+    BUFFERSIZES,
+    CONFICENCEDICT,
+    FILTERPATH,
+    OSMRASTER,
+    TERRADIR,
+    TIME,
+)
 
 
 def get_tilename(file: str) -> str:
@@ -143,38 +153,45 @@ def get_vector_areas(
     return df_of_features
 
 
-def write_as_raster(df: gpd.GeoDataFrame):
-    print("Function not yet implemented")
+def write_as_raster(df: gpd.GeoDataFrame, rastertile: str, filter_class: str) -> None:
+    wc_data = rioxarray.open_rasterio(TERRADIR + "Maps/" + rastertile)
+    osm_raster = make_geocube(vector_data=df, measurements=["confidence"], like=wc_data)
+    wc_data = None
+    tilename = get_tilename(rastertile)
+    osm_raster_path = OSMRASTER + tilename + f"/{filter_class}.tif"
+    if not os.path.exists(OSMRASTER + tilename):
+        os.makedirs(OSMRASTER + tilename)
+
+    osm_raster.rio.to_raster(osm_raster_path)
+
+    print("Function not yet finished. Which algorythm per pixel used? ")
 
 
-def query_osm_data(tilename, extent, confidence_dict, buffer_dict):
-    path_to_filter = FILTERPATH + "builtup.txt"
+def query_osm_data(rastertile, extent, confidence_dict, buffer_dict):
+    filter_class = "builtup.txt"
+    path_to_filter = FILTERPATH + filter_class
     builtup_df = get_vector_areas(
         path_to_filter, TIME, extent, confidence_dict, buffer_dict
     )
-    write_as_raster(builtup_df)
+    write_as_raster(builtup_df, rastertile, filter_class[:-4])
 
-    # TODO: remove below
+    # TODO: remove below. For Testing only
     with open("./data/test/gdf.geojson", "w") as f:
         f.write(builtup_df.to_json())
-
-    # properties = response.json()["properties"]
 
     # TODO:
     #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
     #  Für andere Klassen wiederholen. Loop mit for every txt in filter dir?
 
 
-
 def main():
     for file in os.listdir(TERRADIR + "Maps/"):
         print(f"started with {file}")
 
-        tilename = get_tilename(file)
         bound_featurecol = get_extent(file)
         confidence_dict = load_dict(CONFICENCEDICT)
         buffer_dict = load_dict(BUFFERSIZES)
-        query_osm_data(tilename, bound_featurecol, confidence_dict, buffer_dict)
+        query_osm_data(file, bound_featurecol, confidence_dict, buffer_dict)
         # combine_rasters (per tile)
 
         print(f"finished with {file}")
