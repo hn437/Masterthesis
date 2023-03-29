@@ -1,0 +1,13 @@
+aeroway,1
+amenity,1
+building,3
+cycleway,3
+highway,3
+landcover,2
+landuse,2
+leisure,1
+man_made,3
+office,3
+railway,2
+shop,3
+surface,3
