@@ -5,10 +5,11 @@ Takes Area of Interest, downloads Terradata for it, downloads OSM data and proce
 
 ## Filter Setting:
 ### Filter Format
-Needs to be xyz. \
-Divided by ```,```, not ```=```
+First line filters that should be used for Poly, second for line. Must not have more 
+than 2 lines. if line only, still write them to second line.
 
 ### Buffer Setting 
+Key-Value-Pair and Buffer value must be divided by ```,```, not ```=```.\
 Width of lines must be the total width the line should be, not per Lane of road or radius.
 The required Unit is Meters.
 
