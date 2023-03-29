@@ -9,7 +9,7 @@ from terracatalogueclient import Catalogue
 from config import INFILES, INPUTDIR, PASSWORD, TERRADIR, USERNAME
 
 
-def import_geodata(inputdir, infile):
+def import_geodata(inputdir: str, infile: str) -> gpd.GeoDataFrame:
     if infile is not None:
         path_to_file = pathlib.Path(inputdir, infile)
         df = gpd.read_file(path_to_file)
@@ -20,7 +20,7 @@ def import_geodata(inputdir, infile):
     return df
 
 
-def download_terrascope_data(directory):
+def download_terrascope_data(directory: pathlib.Path) -> None:
     # Authenticate to the Terrascope platform and create catalogue object
     catalogue = Catalogue().authenticate_non_interactive(
         username=USERNAME, password=PASSWORD
@@ -66,7 +66,7 @@ def download_terrascope_data(directory):
     )
 
 
-def clean_terradata(scratch_dir):
+def clean_terradata(scratch_dir: pathlib.Path) -> None:
     print(f"Extracting WorldCover Mapdata and Quality Data")
 
     maps_dir = TERRADIR + "Maps/"
@@ -88,9 +88,10 @@ def clean_terradata(scratch_dir):
 
 
 def main():
-    terradir_scratch = pathlib.Path(TERRADIR + "scratch/")
-    download_terrascope_data(terradir_scratch)
-    clean_terradata(terradir_scratch)
+    path_terradir_scratch = pathlib.Path(TERRADIR + "scratch/")
+
+    download_terrascope_data(path_terradir_scratch)
+    clean_terradata(path_terradir_scratch)
 
 
 if __name__ == "__main__":
