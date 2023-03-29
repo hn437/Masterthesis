@@ -1,14 +1,16 @@
 import os
 
-import pandas
-import rasterio
-from geojson import FeatureCollection, Feature
 import geojson
 import geopandas as gpd
+import pandas
+import rasterio
 import requests
+from geojson import Feature, FeatureCollection
+from pyproj.aoi import AreaOfInterest
+from pyproj.database import query_utm_crs_info
 from shapely.geometry import box
 
-from config import TERRADIR, APIENDPOINT, TIME, FILTERPATH, CONFICENCEDICT, BUFFERSIZES
+from config import APIENDPOINT, BUFFERSIZES, CONFICENCEDICT, FILTERPATH, TERRADIR, TIME
 
 
 def get_tilename(file: str) -> str:
@@ -34,7 +36,13 @@ def load_dict(path) -> dict:
     return d
 
 
-def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, confidence_dict: dict, buffer_dict: dict) -> gpd.GeoDataFrame:
+def query_ohsome(
+    path_to_filter: str,
+    time: str,
+    extent: FeatureCollection,
+    confidence_dict: dict,
+    buffer_dict: dict,
+) -> gpd.GeoDataFrame:
     df_of_features = gpd.GeoDataFrame()
     buffered_linefeatures = gpd.GeoDataFrame()
 
@@ -52,11 +60,36 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
             counter += 1
             continue
 
-        data = {"bpolys": geojson.dumps(extent), "time": time, "filter": filterquery, "properties": "tags"}
+        data = {
+            "bpolys": geojson.dumps(extent),
+            "time": time,
+            "filter": filterquery,
+            "properties": "tags",
+        }
         response = requests.post(APIENDPOINT, data=data)
         response.raise_for_status()
 
-        datapart = gpd.GeoDataFrame.from_features(response.json()['features'])
+        datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
+        # set crs as it is not returned in response, but is always WGS 84
+        datapart.set_crs(4326, inplace=True)
+
+        # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
+        if counter == 1:
+            # get example coordinate to query useable UTM projection
+            tile_corner_coords = extent["features"][0]["geometry"]["coordinates"][0][0]
+            # query UTM code for that coordinate
+            utm_crs_list = query_utm_crs_info(
+                datum_name="WGS 84",
+                area_of_interest=AreaOfInterest(
+                    west_lon_degree=tile_corner_coords[0],
+                    south_lat_degree=tile_corner_coords[1],
+                    east_lon_degree=tile_corner_coords[0],
+                    north_lat_degree=tile_corner_coords[1],
+                ),
+            )
+            utm_code = utm_crs_list[0].code
+            # reproject feature to queried UTM
+            datapart.to_crs(utm_code, inplace=True)
 
         # dropping all columns (= OSM Keys) not queried
         column_names = datapart.columns.values.tolist()[3:]
@@ -68,29 +101,39 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
         for index in datapart.index:
             row = datapart.loc[[index]]
             row = row[row.columns[~row.isnull().all()]]
-            used_keys  = row.columns.values.tolist()[3:]
+            used_keys = row.columns.values.tolist()[3:]
 
             if counter == 0:
-            # iterate over features to assign confidence level of polygons
-                if any(i in used_keys for i in [k for k, v in confidence_dict.items() if v == 3]):
+                # iterate over features to assign confidence level of polygons
+                if any(
+                    i in used_keys
+                    for i in [k for k, v in confidence_dict.items() if v == 3]
+                ):
                     datapart.at[index, "confidence"] = int(3)
-                elif any(i in used_keys for i in [k for k, v in confidence_dict.items() if v == 2]):
+                elif any(
+                    i in used_keys
+                    for i in [k for k, v in confidence_dict.items() if v == 2]
+                ):
                     datapart.at[index, "confidence"] = int(2)
                 else:
                     datapart.at[index, "confidence"] = int(1)
             else:
                 # iterate over features to buffer the lines
-
                 buffer_dist = None
                 for key in used_keys:
                     combined_key = f"{key}={row[key][index]}"
                     if combined_key in buffer_dict:
                         buffer_dist = buffer_dict[combined_key]
                 if buffer_dist is not None:
-                    row['geometry'] = row.geometry.buffer(buffer_dist)
+                    # buffer feature. Divide by 2, as the input defines the buffer radius
+                    row["geometry"] = row.geometry.buffer(buffer_dist / 2)
+                    # reproject feature back to WGS 84 to be able to add them to polygone features
+                    row = row.to_crs(4326)
+                    # add feature to df of buffered features
                     buffered_linefeatures = pandas.concat([buffered_linefeatures, row])
 
-        if counter ==1:
+        if counter == 1:
+            # if features are a line feature, write confidence level 2
             datapart = buffered_linefeatures
             datapart["confidence"] = int(2)
 
@@ -102,14 +145,15 @@ def query_ohsome(path_to_filter: str, time: str, extent: FeatureCollection, conf
 
 def query_builtup_data(tilename, extent, confidence_dict, buffer_dict):
     path_to_filter = FILTERPATH + "builtup.txt"
-    builtup_df = query_ohsome(path_to_filter, TIME, extent, confidence_dict, buffer_dict)
+    builtup_df = query_ohsome(
+        path_to_filter, TIME, extent, confidence_dict, buffer_dict
+    )
 
     # TODO: remove below
-    with open('./data/test/gdf.geojson', "w") as f:
+    with open("./data/test/gdf.geojson", "w") as f:
         f.write(builtup_df.to_json())
 
-
-    #properties = response.json()["properties"]
+    # properties = response.json()["properties"]
     """
     Zeit anpassen der abfrage
     jetzt habe ich alle, will das ja aber nicht, sondern in klassen. also muss ich filter schon aufteilen?
@@ -129,6 +173,7 @@ def main():
         query_builtup_data(tilename, bound_featurecol, confidence_dict, buffer_dict)
 
         print(f"finished with {file}")
+        # TODO: remove below
         break
 
 
