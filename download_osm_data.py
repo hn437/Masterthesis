@@ -36,7 +36,7 @@ def load_dict(path) -> dict:
     return d
 
 
-def query_ohsome(
+def get_vector_areas(
     path_to_filter: str,
     time: str,
     extent: FeatureCollection,
@@ -72,6 +72,11 @@ def query_ohsome(
         datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
         # set crs as it is not returned in response, but is always WGS 84
         datapart.set_crs(4326, inplace=True)
+        # dropping all columns (= OSM Keys) not actively queried
+        column_names = datapart.columns.values.tolist()[3:]
+        confidence_keys = [key for key in confidence_dict]
+        col_to_drop = list(set(column_names) - set(confidence_keys))
+        datapart = datapart.drop(columns=col_to_drop)
 
         # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
         if counter == 1:
@@ -91,15 +96,10 @@ def query_ohsome(
             # reproject feature to queried UTM
             datapart.to_crs(utm_code, inplace=True)
 
-        # dropping all columns (= OSM Keys) not queried
-        column_names = datapart.columns.values.tolist()[3:]
-        confidence_keys = [key for key in confidence_dict]
-        col_to_drop = list(set(column_names) - set(confidence_keys))
-        datapart = datapart.drop(columns=col_to_drop)
-
-        # iterate over features to assign confidence level and buffer lines
+        # iterate over features to assign confidence level and buffer the lines
         for index in datapart.index:
             row = datapart.loc[[index]]
+            # drop columns without values
             row = row[row.columns[~row.isnull().all()]]
             used_keys = row.columns.values.tolist()[3:]
 
@@ -133,7 +133,7 @@ def query_ohsome(
                     buffered_linefeatures = pandas.concat([buffered_linefeatures, row])
 
         if counter == 1:
-            # if features are a line feature, write confidence level 2
+            # if features are a line features, write confidence level 2
             datapart = buffered_linefeatures
             datapart["confidence"] = int(2)
 
@@ -143,23 +143,27 @@ def query_ohsome(
     return df_of_features
 
 
-def query_builtup_data(tilename, extent, confidence_dict, buffer_dict):
+def write_as_raster(df: gpd.GeoDataFrame):
+    print("Function not yet implemented")
+
+
+def query_osm_data(tilename, extent, confidence_dict, buffer_dict):
     path_to_filter = FILTERPATH + "builtup.txt"
-    builtup_df = query_ohsome(
+    builtup_df = get_vector_areas(
         path_to_filter, TIME, extent, confidence_dict, buffer_dict
     )
+    write_as_raster(builtup_df)
 
     # TODO: remove below
     with open("./data/test/gdf.geojson", "w") as f:
         f.write(builtup_df.to_json())
 
     # properties = response.json()["properties"]
-    """
-    Zeit anpassen der abfrage
-    jetzt habe ich alle, will das ja aber nicht, sondern in klassen. also muss ich filter schon aufteilen?
-    line_feature müssen gebuffert werden
-    dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
-    """
+
+    # TODO:
+    #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
+    #  Für andere Klassen wiederholen. Loop mit for every txt in filter dir?
+
 
 
 def main():
@@ -170,11 +174,18 @@ def main():
         bound_featurecol = get_extent(file)
         confidence_dict = load_dict(CONFICENCEDICT)
         buffer_dict = load_dict(BUFFERSIZES)
-        query_builtup_data(tilename, bound_featurecol, confidence_dict, buffer_dict)
+        query_osm_data(tilename, bound_featurecol, confidence_dict, buffer_dict)
+        # combine_rasters (per tile)
 
         print(f"finished with {file}")
         # TODO: remove below
         break
+
+    # TODO:
+    #  Zeit der Abfrage anpassen
+    #  functionen weiter aufsplitten
+    #  logging überarbeiten
+    #  comments und docstrings adden
 
 
 if __name__ == "__main__":
