@@ -93,6 +93,11 @@ def main():
     download_terrascope_data(path_terradir_scratch)
     clean_terradata(path_terradir_scratch)
 
+    #TODO:
+    # Improve Logging
+    # add Docstrings
+    # add Comments
+
 
 if __name__ == "__main__":
     main()
