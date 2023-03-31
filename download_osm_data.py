@@ -1,8 +1,10 @@
 import os
 
+import geocube.exceptions
 import geojson
 import geopandas as gpd
 import pandas
+import pathlib
 import rasterio
 import requests
 import rioxarray
@@ -28,15 +30,15 @@ def get_tilename(file: str) -> str:
     return name
 
 
-def get_extent(file: str) -> FeatureCollection:
-    with rasterio.open(TERRADIR + "Maps/" + file) as raster:
+def get_extent(file: pathlib.Path) -> FeatureCollection:
+    with rasterio.open(file) as raster:
         bounds = raster.bounds
     geom = box(*bounds)
     feature_collection = FeatureCollection([Feature(geometry=geom)])
     return feature_collection
 
 
-def load_dict(path) -> dict:
+def load_dict(path: str) -> dict:
     d = {}
     with open(path) as f:
         for line in f:
@@ -47,7 +49,7 @@ def load_dict(path) -> dict:
 
 
 def get_vector_areas(
-    path_to_filter: str,
+    path_to_filter: pathlib.Path,
     time: str,
     extent: FeatureCollection,
     confidence_dict: dict,
@@ -153,46 +155,48 @@ def get_vector_areas(
     return df_of_features
 
 
-def write_as_raster(df: gpd.GeoDataFrame, rastertile: str, filter_class: str) -> None:
-    wc_data = rioxarray.open_rasterio(TERRADIR + "Maps/" + rastertile)
-    osm_raster = make_geocube(vector_data=df, measurements=["confidence"], like=wc_data)
+def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str) -> None:
+    wc_data = rioxarray.open_rasterio(rastertile)
+    try:
+        osm_raster = make_geocube(vector_data=df, measurements=["confidence"], like=wc_data)
+        tilename = get_tilename(rastertile.name)
+        osm_raster_path = OSMRASTER + tilename + f"/{time}"
+        if not os.path.exists(osm_raster_path):
+            os.makedirs(osm_raster_path)
+        osm_raster.rio.to_raster(osm_raster_path + f"/{filter_class}.tif")
+    except geocube.exceptions.VectorDataError:
+        print(f"No Data for Filter {filter_class} in Ratsertile {rastertile.name} in year {time}")
+
     wc_data = None
-    tilename = get_tilename(rastertile)
-    osm_raster_path = OSMRASTER + tilename + f"/{filter_class}.tif"
-    if not os.path.exists(OSMRASTER + tilename):
-        os.makedirs(OSMRASTER + tilename)
-
-    osm_raster.rio.to_raster(osm_raster_path)
-
-    print("Function not yet finished. Which algorythm per pixel used? ")
 
 
-def query_osm_data(rastertile, extent, confidence_dict, buffer_dict):
-    filter_class = "builtup.txt"
-    path_to_filter = FILTERPATH + filter_class
-    builtup_df = get_vector_areas(
-        path_to_filter, TIME, extent, confidence_dict, buffer_dict
-    )
-    write_as_raster(builtup_df, rastertile, filter_class[:-4])
+def query_osm_data(rastertile: str, extent: FeatureCollection, confidence_dict: dict, buffer_dict: dict, time: str) -> None:
+    for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
+        builtup_df = get_vector_areas(
+            filter_class, time, extent, confidence_dict, buffer_dict
+        )
+        write_as_raster(builtup_df, rastertile, filter_class.stem, time[:4])
 
-    # TODO: remove below. For Testing only
-    with open("./data/test/gdf.geojson", "w") as f:
-        f.write(builtup_df.to_json())
+        # TODO: remove below. For Testing only
+        #with open("./data/test/gdf.geojson", "w") as f:
+        #    f.write(builtup_df.to_json())
 
-    # TODO:
-    #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
-    #  Für andere Klassen wiederholen. Loop mit for every txt in filter dir?
+        # TODO:
+        #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
+        #  Für andere Klassen wiederholen. Loop mit for every txt in filter dir?
+        #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen
 
 
 def main():
-    for file in os.listdir(TERRADIR + "Maps/"):
-        print(f"started with {file}")
+    for file in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
+        print(f"started with {file.name}")
 
         bound_featurecol = get_extent(file)
         confidence_dict = load_dict(CONFICENCEDICT)
         buffer_dict = load_dict(BUFFERSIZES)
-        query_osm_data(file, bound_featurecol, confidence_dict, buffer_dict)
-        # combine_rasters (per tile)
+        #TODO: add for both years
+        query_osm_data(file, bound_featurecol, confidence_dict, buffer_dict, TIME)
+        # combine_rasters (per tile and time)
 
         print(f"finished with {file}")
         # TODO: remove below
