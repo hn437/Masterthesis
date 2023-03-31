@@ -64,9 +64,9 @@ def get_vector_areas(
     counter = 0
     for line in lines:
         osmfilter = line
-        if len(osmfilter) != 0 and counter == 0:
+        if len(osmfilter) != 0 and osmfilter != "\n" and counter == 0:
             filterquery = f"({osmfilter}) and geometry:polygon"
-        elif len(osmfilter) != 0 and counter == 1:
+        elif len(osmfilter) != 0 and osmfilter != "\n" and counter == 1:
             filterquery = f"({osmfilter}) and geometry:line"
         else:
             counter += 1
