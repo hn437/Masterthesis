@@ -1,10 +1,10 @@
 import os
+import pathlib
 
 import geocube.exceptions
 import geojson
 import geopandas as gpd
 import pandas
-import pathlib
 import rasterio
 import requests
 import rioxarray
@@ -155,22 +155,34 @@ def get_vector_areas(
     return df_of_features
 
 
-def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str) -> None:
+def write_as_raster(
+    df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str
+) -> None:
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
-        osm_raster = make_geocube(vector_data=df, measurements=["confidence"], like=wc_data)
+        osm_raster = make_geocube(
+            vector_data=df, measurements=["confidence"], like=wc_data
+        )
         tilename = get_tilename(rastertile.name)
         osm_raster_path = OSMRASTER + tilename + f"/{time}"
         if not os.path.exists(osm_raster_path):
             os.makedirs(osm_raster_path)
         osm_raster.rio.to_raster(osm_raster_path + f"/{filter_class}.tif")
     except geocube.exceptions.VectorDataError:
-        print(f"No Data for Filter {filter_class} in Ratsertile {rastertile.name} in year {time}")
+        print(
+            f"No Data for Filter {filter_class} in Ratsertile {rastertile.name} in year {time}"
+        )
 
     wc_data = None
 
 
-def query_osm_data(rastertile: str, extent: FeatureCollection, confidence_dict: dict, buffer_dict: dict, time: str) -> None:
+def query_osm_data(
+    rastertile: str,
+    extent: FeatureCollection,
+    confidence_dict: dict,
+    buffer_dict: dict,
+    time: str,
+) -> None:
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
         builtup_df = get_vector_areas(
             filter_class, time, extent, confidence_dict, buffer_dict
@@ -178,12 +190,11 @@ def query_osm_data(rastertile: str, extent: FeatureCollection, confidence_dict: 
         write_as_raster(builtup_df, rastertile, filter_class.stem, time[:4])
 
         # TODO: remove below. For Testing only
-        #with open("./data/test/gdf.geojson", "w") as f:
+        # with open("./data/test/gdf.geojson", "w") as f:
         #    f.write(builtup_df.to_json())
 
         # TODO:
-        #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht
-        #  Für andere Klassen wiederholen. Loop mit for every txt in filter dir?
+        #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
         #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen
 
 
@@ -194,7 +205,7 @@ def main():
         bound_featurecol = get_extent(file)
         confidence_dict = load_dict(CONFICENCEDICT)
         buffer_dict = load_dict(BUFFERSIZES)
-        #TODO: add for both years
+        # TODO: add for both years
         query_osm_data(file, bound_featurecol, confidence_dict, buffer_dict, TIME)
         # combine_rasters (per tile and time)
 
