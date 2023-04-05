@@ -1,0 +1,11 @@
+tree,10
+shrubland,20
+grassland,30
+cropland,40
+builtup,50
+bare,60
+snow,70
+water,80
+wetland, 90
+mangroves,95
+moss,100
