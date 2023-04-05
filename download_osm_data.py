@@ -6,9 +6,9 @@ from typing import Coroutine
 import geocube.exceptions
 import geojson
 import geopandas as gpd
+import httpx
 import pandas
 import rasterio
-import httpx
 import rioxarray
 from geocube.api.core import make_geocube
 from geojson import Feature, FeatureCollection
@@ -57,7 +57,7 @@ async def get_vector_areas(
     extent: FeatureCollection,
     confidence_dict: dict,
     buffer_dict: dict,
-    class_codes:dict,
+    class_codes: dict,
 ) -> gpd.GeoDataFrame:
     df_of_features = gpd.GeoDataFrame()
     buffered_linefeatures = gpd.GeoDataFrame()
@@ -82,7 +82,7 @@ async def get_vector_areas(
             "filter": filterquery,
             "properties": "tags",
         }
-        #response = requests.post(APIENDPOINT, data=data)
+        # response = requests.post(APIENDPOINT, data=data)
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, read=1320)) as client:
             response = await client.post(APIENDPOINT, data=data)
         response.raise_for_status()
@@ -178,7 +178,7 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
 def write_as_raster(
     df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str
 ) -> None:
-    #TODO: rework this for new usage: combined vector instead of single one
+    # TODO: rework this for new usage: combined vector instead of single one
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
@@ -206,9 +206,11 @@ async def query_osm_data(
 ) -> None:
     tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
-        tasks.append(get_vector_areas(
-            filter_class, time, extent, confidence_dict, buffer_dict, class_codes
-        ))
+        tasks.append(
+            get_vector_areas(
+                filter_class, time, extent, confidence_dict, buffer_dict, class_codes
+            )
+        )
 
     # await the result for all food reports
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
@@ -221,7 +223,7 @@ async def query_osm_data(
     # with open("./data/test/gdf.geojson", "w") as f:
     #    f.write(all_vectordata_uncleaned.to_json())
 
-    #TODO: combine layer
+    # TODO: combine layer
     combined_layer = None
 
     return combined_layer
@@ -236,12 +238,15 @@ async def main():
         buffer_dict = load_dict(BUFFERSIZES)
         class_codes = load_dict(CLASSCODES)
         # TODO: add for both years
-        osm_data = await query_osm_data(bound_featurecol, confidence_dict, buffer_dict, class_codes, TIME)
+        osm_data = await query_osm_data(
+            bound_featurecol, confidence_dict, buffer_dict, class_codes, TIME
+        )
 
         write_as_raster(osm_data, rastertile, "name_of_outputraster", TIME[:4])
         # TODO:
         #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
-        #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen
+        #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen.
+        #  Ist aber schon automatisch, da in rastertile name. also choose time anhand raster name
         # combine_rasters (per tile and time)
 
         print(f"finished with {rastertile}")
