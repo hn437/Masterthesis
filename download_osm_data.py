@@ -1,12 +1,14 @@
+import asyncio
 import os
 import pathlib
+from typing import Coroutine
 
 import geocube.exceptions
 import geojson
 import geopandas as gpd
 import pandas
 import rasterio
-import requests
+import httpx
 import rioxarray
 from geocube.api.core import make_geocube
 from geojson import Feature, FeatureCollection
@@ -49,7 +51,7 @@ def load_dict(path: str) -> dict:
     return d
 
 
-def get_vector_areas(
+async def get_vector_areas(
     path_to_filter: pathlib.Path,
     time: str,
     extent: FeatureCollection,
@@ -80,7 +82,9 @@ def get_vector_areas(
             "filter": filterquery,
             "properties": "tags",
         }
-        response = requests.post(APIENDPOINT, data=data)
+        #response = requests.post(APIENDPOINT, data=data)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(600, read=1320)) as client:
+            response = await client.post(APIENDPOINT, data=data)
         response.raise_for_status()
 
         datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
@@ -159,9 +163,22 @@ def get_vector_areas(
     return df_of_features
 
 
+async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
+    """A wrapper around `gather` to limit the number of tasks executed at a time."""
+    # Semaphore needs to be initiated inside the event loop
+    semaphore = asyncio.Semaphore(5)
+
+    async def sem_task(task):
+        async with semaphore:
+            return await task
+
+    return await asyncio.gather(*(sem_task(task) for task in tasks), *args, **kwargs)
+
+
 def write_as_raster(
     df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str
 ) -> None:
+    #TODO: rework this for new usage: combined vector instead of single one
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
@@ -180,43 +197,54 @@ def write_as_raster(
     wc_data = None
 
 
-def query_osm_data(
-    rastertile: str,
+async def query_osm_data(
     extent: FeatureCollection,
     confidence_dict: dict,
     buffer_dict: dict,
     class_codes: dict,
     time: str,
 ) -> None:
+    tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
-        # TODO: parallelize
-        osm_data = get_vector_areas(
+        tasks.append(get_vector_areas(
             filter_class, time, extent, confidence_dict, buffer_dict, class_codes
-        )
+        ))
 
-        # TODO: remove below. For Testing only
-        # with open("./data/test/gdf.geojson", "w") as f:
-        #    f.write(builtup_df.to_json())
+    # await the result for all food reports
+    tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
+    # create empty gdf to collect all features
+    all_vectordata_uncleaned = gpd.GeoDataFrame()
+    for dataframe in tasks_results:
+        all_vectordata_uncleaned = pandas.concat([all_vectordata_uncleaned, dataframe])
 
-    write_as_raster(osm_data, rastertile, filter_class.stem, time[:4])
-    # TODO:
-    #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
-    #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen
+    # TODO: remove below. For Testing only
+    # with open("./data/test/gdf.geojson", "w") as f:
+    #    f.write(all_vectordata_uncleaned.to_json())
+
+    #TODO: combine layer
+    combined_layer = None
+
+    return combined_layer
 
 
-def main():
-    for file in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
-        print(f"started with {file.name}")
+async def main():
+    for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
+        print(f"started with {rastertile.name}")
 
-        bound_featurecol = get_extent(file)
+        bound_featurecol = get_extent(rastertile)
         confidence_dict = load_dict(CONFICENCEDICT)
         buffer_dict = load_dict(BUFFERSIZES)
         class_codes = load_dict(CLASSCODES)
         # TODO: add for both years
-        query_osm_data(file, bound_featurecol, confidence_dict, buffer_dict, class_codes, TIME)
+        osm_data = await query_osm_data(bound_featurecol, confidence_dict, buffer_dict, class_codes, TIME)
+
+        write_as_raster(osm_data, rastertile, "name_of_outputraster", TIME[:4])
+        # TODO:
+        #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
+        #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen
         # combine_rasters (per tile and time)
 
-        print(f"finished with {file}")
+        print(f"finished with {rastertile}")
         # TODO: remove below
         break
 
@@ -228,4 +256,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
