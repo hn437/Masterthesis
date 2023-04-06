@@ -24,13 +24,19 @@ from config import (
     FILTERPATH,
     OSMRASTER,
     TERRADIR,
-    TIME,
+    TIME20,
+    TIME21,
 )
 
 
-def get_tilename(file: str) -> str:
+def get_tilename(file: pathlib.Path) -> str:
     name = file[-15:-8]
     return name
+
+
+def get_tileyear(file: pathlib.Path) -> str:
+    year = file.stem[-21:-17]
+    return year
 
 
 def get_extent(file: pathlib.Path) -> FeatureCollection:
@@ -86,8 +92,8 @@ async def get_vector_areas(
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, read=1320)) as client:
             response = await client.post(APIENDPOINT, data=data)
         response.raise_for_status()
-
         datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
+        del response
         # set crs as it is not returned in response, but is always WGS 84
         datapart.set_crs(4326, inplace=True)
         # dropping all columns (= OSM Keys) not actively queried
@@ -125,9 +131,9 @@ async def get_vector_areas(
                 # iterate over features to assign confidence level of polygons
                 if any(
                     i in used_keys
-                    for i in [k for k, v in confidence_dict.items() if v == 3]
+                    for i in [k for k, v in confidence_dict.items() if v == 4]
                 ):
-                    datapart.at[index, "confidence"] = int(3)
+                    datapart.at[index, "confidence"] = int(4)
                 elif any(
                     i in used_keys
                     for i in [k for k, v in confidence_dict.items() if v == 2]
@@ -153,6 +159,7 @@ async def get_vector_areas(
         if counter == 1:
             # if features are a line features, write confidence level 2
             datapart = buffered_linefeatures
+            del buffered_linefeatures
             datapart["confidence"] = int(3)
 
         df_of_features = pandas.concat([df_of_features, datapart])
@@ -194,7 +201,7 @@ def write_as_raster(
             f"No Data for Filter {filter_class} in Rastertile {rastertile.name} in year {time}"
         )
 
-    wc_data = None
+    del wc_data
 
 
 async def query_osm_data(
@@ -204,6 +211,7 @@ async def query_osm_data(
     class_codes: dict,
     time: str,
 ) -> None:
+    # create task list, getting all vector features for each filter
     tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
         tasks.append(
@@ -212,12 +220,13 @@ async def query_osm_data(
             )
         )
 
-    # await the result for all food reports
+    # await the result for all ohsome queries
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
     # create empty gdf to collect all features
     all_vectordata_uncleaned = gpd.GeoDataFrame()
     for dataframe in tasks_results:
         all_vectordata_uncleaned = pandas.concat([all_vectordata_uncleaned, dataframe])
+    del tasks, tasks_results, dataframe
 
     # TODO: remove below. For Testing only
     # with open("./data/test/gdf.geojson", "w") as f:
@@ -230,19 +239,31 @@ async def query_osm_data(
 
 
 async def main():
+    # load dicts needed for all rasterfiles containing the class codes, key-confidences and buffer sizes
+    confidence_dict = load_dict(CONFICENCEDICT)
+    buffer_dict = load_dict(BUFFERSIZES)
+    class_codes = load_dict(CLASSCODES)
+
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
         print(f"started with {rastertile.name}")
+        # Get the year represented by the rasterfile and set Ohsome download date accordingly
+        year = get_tileyear(rastertile)
+        if year == "2020":
+            time = TIME20
+        elif year == "2021":
+            time = TIME21
+        else:
+            print(f"Could not derive year for rasterfile {rastertile.name}. Cannot process this raster!")
+            continue
 
+        # get the extent of the raster for which OSM data should be downloaded
         bound_featurecol = get_extent(rastertile)
-        confidence_dict = load_dict(CONFICENCEDICT)
-        buffer_dict = load_dict(BUFFERSIZES)
-        class_codes = load_dict(CLASSCODES)
-        # TODO: add for both years
+        # download and process all relevant vector data overlaying this raster
         osm_data = await query_osm_data(
-            bound_featurecol, confidence_dict, buffer_dict, class_codes, TIME
+            bound_featurecol, confidence_dict, buffer_dict, class_codes, time
         )
-
-        write_as_raster(osm_data, rastertile, "name_of_outputraster", TIME[:4])
+        # convert vector data in raster data and save it
+        #write_as_raster(osm_data, rastertile, "name_of_outputraster", year)
         # TODO:
         #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
         #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen.
