@@ -1,12 +1,14 @@
 # Masterthesis
 
 ## General Function
-Takes Area of Interest, downloads Terradata for it, downloads OSM data and processes it
+Takes Area of Interest, downloads Terradata for both years for it, downloads OSM data and processes it.
+As terradata is downloaded for both years and OSM script iterates over downloaded maps, 
+no need to implement processing for both years in that script again
 
 ## Filter Setting:
 ### Filter Format
 First line filters that should be used for Poly, second for line. Must not have more 
-than 2 lines. if line only, still write them to second line.
+than 2 lines. if line features only, still write them to second line.
 
 ### Buffer Setting 
 Key-Value-Pair and Buffer value must be divided by ```,```, not ```=```.\
