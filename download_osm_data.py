@@ -154,7 +154,9 @@ async def get_vector_areas(
                     # reproject feature back to WGS 84 to be able to add them to polygone features
                     row = row.to_crs(4326)
                     # add feature to df of buffered features
-                    buffered_linefeatures = pandas.concat([buffered_linefeatures, row])
+                    buffered_linefeatures = pandas.concat(
+                        [buffered_linefeatures, row], ignore_index=True
+                    )
 
         if counter == 1:
             # if features are a line features, write confidence level 2
@@ -162,7 +164,7 @@ async def get_vector_areas(
             del buffered_linefeatures
             datapart["confidence"] = int(3)
 
-        df_of_features = pandas.concat([df_of_features, datapart])
+        df_of_features = pandas.concat([df_of_features, datapart], ignore_index=True)
         counter += 1
 
     df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
@@ -180,6 +182,77 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
             return await task
 
     return await asyncio.gather(*(sem_task(task) for task in tasks), *args, **kwargs)
+
+
+def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    # check if overlays exist within gdf
+    overlays_exist = False
+    for index, row in input_df.iterrows():
+        # create temporary layer of all features except the one to be checked
+        data_temp1 = input_df.drop(input_df.iloc[[index]].index)
+        # overlap feature with all other features
+        overlaps = data_temp1[data_temp1.geometry.overlaps(row.geometry)]
+        # check if intersection occurred
+        if len(overlaps) > 0:
+            # if overlap occurred stop searching for overlaps and set variable accordingly
+            overlays_exist = True
+            break
+    del data_temp1, overlaps, index, row
+    if overlays_exist:
+        # create a dataframe of all elements of the highest confidence level
+        cleaned_features = input_df[input_df["confidence"] == 4]
+        for confidence in range(1, 4):
+            # get features of lower confidence value, get the difference to features of
+            #  higher confidence levels (-> not overlaid by features of a higher
+            #  confidence level) and this difference to the new dataframe
+            df_base = input_df[input_df["confidence"] == confidence]
+            clip_features = input_df[input_df["confidence"] > confidence]
+            res_difference = df_base.overlay(clip_features, how="difference")
+            cleaned_features = pandas.concat(
+                [cleaned_features, res_difference], ignore_index=True
+            )
+        return cleaned_features
+    else:
+        return input_df
+
+
+async def query_osm_data(
+    extent: FeatureCollection,
+    confidence_dict: dict,
+    buffer_dict: dict,
+    class_codes: dict,
+    time: str,
+) -> None:
+    # create task list, getting all vector features for each filter
+    tasks = []
+    for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
+        tasks.append(
+            get_vector_areas(
+                filter_class, time, extent, confidence_dict, buffer_dict, class_codes
+            )
+        )
+
+    # await the result for all ohsome queries
+    tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
+    # create empty gdf to collect all features
+    if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
+        print(f"\nErrors occured! Cannot process vector layers.")
+        for element in tasks_results:
+            if not isinstance(element, gpd.GeoDataFrame):
+                print(element + "\n")
+        return None
+    else:
+        all_vector_data = gpd.GeoDataFrame(
+            pandas.concat(tasks_results, ignore_index=True), crs=4326
+        )
+        del tasks, tasks_results
+        all_vector_data = resolve_overlays(all_vector_data)
+
+        # TODO: remove below. For Testing only
+        # with open("./data/test/gdf_cleaned.geojson", "w") as f:
+        #    f.write(all_vector_data.to_json())
+
+        return all_vector_data
 
 
 def write_as_raster(
@@ -204,40 +277,6 @@ def write_as_raster(
     del wc_data
 
 
-async def query_osm_data(
-    extent: FeatureCollection,
-    confidence_dict: dict,
-    buffer_dict: dict,
-    class_codes: dict,
-    time: str,
-) -> None:
-    # create task list, getting all vector features for each filter
-    tasks = []
-    for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
-        tasks.append(
-            get_vector_areas(
-                filter_class, time, extent, confidence_dict, buffer_dict, class_codes
-            )
-        )
-
-    # await the result for all ohsome queries
-    tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
-    # create empty gdf to collect all features
-    all_vectordata_uncleaned = gpd.GeoDataFrame()
-    for dataframe in tasks_results:
-        all_vectordata_uncleaned = pandas.concat([all_vectordata_uncleaned, dataframe])
-    del tasks, tasks_results, dataframe
-
-    # TODO: remove below. For Testing only
-    # with open("./data/test/gdf.geojson", "w") as f:
-    #    f.write(all_vectordata_uncleaned.to_json())
-
-    # TODO: combine layer
-    combined_layer = None
-
-    return combined_layer
-
-
 async def main():
     # load dicts needed for all rasterfiles containing the class codes, key-confidences and buffer sizes
     confidence_dict = load_dict(CONFICENCEDICT)
@@ -245,7 +284,7 @@ async def main():
     class_codes = load_dict(CLASSCODES)
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
-        print(f"started with {rastertile.name}")
+        print(f"Started with {rastertile.name}")
         # Get the year represented by the rasterfile and set Ohsome download date accordingly
         year = get_tileyear(rastertile)
         if year == "2020":
@@ -253,7 +292,9 @@ async def main():
         elif year == "2021":
             time = TIME21
         else:
-            print(f"Could not derive year for rasterfile {rastertile.name}. Cannot process this raster!")
+            print(
+                f"Could not derive year for rasterfile {rastertile.name}. Cannot process this raster!"
+            )
             continue
 
         # get the extent of the raster for which OSM data should be downloaded
@@ -262,15 +303,14 @@ async def main():
         osm_data = await query_osm_data(
             bound_featurecol, confidence_dict, buffer_dict, class_codes, time
         )
-        # convert vector data in raster data and save it
-        #write_as_raster(osm_data, rastertile, "name_of_outputraster", year)
-        # TODO:
-        #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
-        #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen.
-        #  Ist aber schon automatisch, da in rastertile name. also choose time anhand raster name
-        # combine_rasters (per tile and time)
+        if osm_data is not None:
+            # convert vector data in raster data and save it
+            write_as_raster(osm_data, rastertile, "name_of_outputraster", year)
+            # TODO:
+            #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
+            #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen.
 
-        print(f"finished with {rastertile}")
+            print(f"finished with {rastertile}")
         # TODO: remove below
         break
 
