@@ -1,7 +1,7 @@
 import asyncio
 import os
 import pathlib
-from typing import Coroutine
+from typing import Coroutine, Optional
 
 import geocube.exceptions
 import geojson
@@ -145,13 +145,16 @@ async def get_vector_areas(
                 # iterate over features to buffer the lines
                 buffer_dist = None
                 for key in used_keys:
+                    # get each key, get the value for this key of this feature anc check
+                    #  if it is in the dict of buffer values.
                     combined_key = f"{key}={row[key][index]}"
                     if combined_key in buffer_dict:
                         buffer_dist = buffer_dict[combined_key]
+                        break
                 if buffer_dist is not None:
                     # buffer feature. Divide by 2, as the input defines the buffer radius
                     row["geometry"] = row.geometry.buffer(buffer_dist / 2)
-                    # reproject feature back to WGS 84 to be able to add them to polygone features
+                    # reproject feature back to WGS 84 to be able to add them to polygon features
                     row = row.to_crs(4326)
                     # add feature to df of buffered features
                     buffered_linefeatures = pandas.concat(
@@ -188,6 +191,7 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # check if overlays exist within gdf
     overlays_exist = False
     for index, row in input_df.iterrows():
+        # TODO: Check if this may just slows down or if its actually improving
         # create temporary layer of all features except the one to be checked
         data_temp1 = input_df.drop(input_df.iloc[[index]].index)
         # overlap feature with all other features
@@ -222,7 +226,7 @@ async def query_osm_data(
     buffer_dict: dict,
     class_codes: dict,
     time: str,
-) -> None:
+) -> Optional[gpd.GeoDataFrame]:
     # create task list, getting all vector features for each filter
     tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
@@ -242,6 +246,8 @@ async def query_osm_data(
                 print(element + "\n")
         return None
     else:
+        # drop empty GeoDataFrames
+        tasks_results = [df for df in tasks_results if not df.empty]
         all_vector_data = gpd.GeoDataFrame(
             pandas.concat(tasks_results, ignore_index=True), crs=4326
         )
@@ -255,23 +261,22 @@ async def query_osm_data(
         return all_vector_data
 
 
-def write_as_raster(
-    df: gpd.GeoDataFrame, rastertile: pathlib.Path, filter_class: str, time: str
-) -> None:
-    # TODO: rework this for new usage: combined vector instead of single one
+def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -> None:
+    # get WorldCover raster to make new raster with same properties
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
             vector_data=df, measurements=["class_code"], like=wc_data
         )
+        del df
         tilename = get_tilename(rastertile.name)
-        osm_raster_path = OSMRASTER + tilename + f"/{time}"
-        if not os.path.exists(osm_raster_path):
-            os.makedirs(osm_raster_path)
-        osm_raster.rio.to_raster(osm_raster_path + f"/{filter_class}.tif")
+        osm_raster_path = OSMRASTER + tilename + f"_{time}.tif"
+        if not os.path.exists(OSMRASTER):
+            os.makedirs(OSMRASTER)
+        osm_raster.rio.to_raster(osm_raster_path)
     except geocube.exceptions.VectorDataError:
         print(
-            f"No Data for Filter {filter_class} in Rastertile {rastertile.name} in year {time}"
+            f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}"
         )
 
     del wc_data
@@ -305,12 +310,13 @@ async def main():
         )
         if osm_data is not None:
             # convert vector data in raster data and save it
-            write_as_raster(osm_data, rastertile, "name_of_outputraster", year)
-            # TODO:
-            #  dann muss raster draus gemacht werden, dass dem ursprünglichen entspricht. was ohne features? Einfach keins, wie im moment?
-            #  Für zweiten Zeitpunkt wiederholen, im Namen einbringen.
-
-            print(f"finished with {rastertile}")
+            write_as_raster(osm_data, rastertile, year)
+            # TODO: Einfach keins, wie im moment?
+            print(f"Finished with {rastertile.name}")
+        else:
+            print(
+                f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}"
+            )
         # TODO: remove below
         break
 
