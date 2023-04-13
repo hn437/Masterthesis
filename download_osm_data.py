@@ -1,6 +1,7 @@
 import asyncio
 import os
 import pathlib
+import warnings
 from typing import Coroutine, Optional
 
 import geocube.exceptions
@@ -47,12 +48,12 @@ def get_extent(file: pathlib.Path) -> FeatureCollection:
     return feature_collection
 
 
-def load_dict(path: str) -> dict:
+def load_dict(path: str, val_type: type) -> dict:
     d = {}
     with open(path) as f:
         for line in f:
             (key, val) = line.split(",")
-            d[key] = int(val)
+            d[key] = val_type(val)
 
     return d
 
@@ -70,6 +71,10 @@ async def get_vector_areas(
 
     with open(path_to_filter) as f:
         lines = f.readlines()
+    if len(lines) < 1:
+        exit(
+            f"Filter {path_to_filter.stem} empty! Fix Filter before attempting to download OSM data"
+        )
 
     counter = 0
     for line in lines:
@@ -94,80 +99,93 @@ async def get_vector_areas(
         response.raise_for_status()
         datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
         del response
-        # set crs as it is not returned in response, but is always WGS 84
-        datapart.set_crs(4326, inplace=True)
-        # dropping all columns (= OSM Keys) not actively queried
-        column_names = datapart.columns.values.tolist()[3:]
-        confidence_keys = [key for key in confidence_dict]
-        col_to_drop = list(set(column_names) - set(confidence_keys))
-        datapart = datapart.drop(columns=col_to_drop)
+        if len(datapart.index) > 0:
+            # only continue processing if features were found
+            # set crs as it is not returned in response, but is always WGS 84
+            datapart.set_crs(4326, inplace=True)
+            # dropping all columns (= OSM Keys) not actively queried
+            column_names = datapart.columns.values.tolist()[3:]
+            confidence_keys = [key for key in confidence_dict]
+            col_to_drop = list(set(column_names) - set(confidence_keys))
+            datapart = datapart.drop(columns=col_to_drop)
 
-        # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
-        if counter == 1:
-            # get example coordinate to query useable UTM projection
-            tile_corner_coords = extent["features"][0]["geometry"]["coordinates"][0][0]
-            # query UTM code for that coordinate
-            utm_crs_list = query_utm_crs_info(
-                datum_name="WGS 84",
-                area_of_interest=AreaOfInterest(
-                    west_lon_degree=tile_corner_coords[0],
-                    south_lat_degree=tile_corner_coords[1],
-                    east_lon_degree=tile_corner_coords[0],
-                    north_lat_degree=tile_corner_coords[1],
-                ),
-            )
-            utm_code = utm_crs_list[0].code
-            # reproject feature to queried UTM
-            datapart.to_crs(utm_code, inplace=True)
+            # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
+            if counter == 1:
+                # get example coordinate to query useable UTM projection
+                tile_corner_coords = extent["features"][0]["geometry"]["coordinates"][
+                    0
+                ][0]
+                # query UTM code for that coordinate
+                utm_crs_list = query_utm_crs_info(
+                    datum_name="WGS 84",
+                    area_of_interest=AreaOfInterest(
+                        west_lon_degree=tile_corner_coords[0],
+                        south_lat_degree=tile_corner_coords[1],
+                        east_lon_degree=tile_corner_coords[0],
+                        north_lat_degree=tile_corner_coords[1],
+                    ),
+                )
+                utm_code = utm_crs_list[0].code
+                # reproject feature to queried UTM
+                datapart.to_crs(utm_code, inplace=True)
 
-        # iterate over features to assign confidence level and buffer the lines
-        for index in datapart.index:
-            row = datapart.loc[[index]]
-            # drop columns without values
-            row = row[row.columns[~row.isnull().all()]]
-            used_keys = row.columns.values.tolist()[3:]
+            # iterate over features to assign confidence level and buffer the lines
+            for index in datapart.index:
+                row = datapart.loc[[index]]
+                # drop columns without values
+                row = row[row.columns[~row.isnull().all()]]
+                used_keys = row.columns.values.tolist()[3:]
 
-            if counter == 0:
-                # iterate over features to assign confidence level of polygons
-                if any(
-                    i in used_keys
-                    for i in [k for k, v in confidence_dict.items() if v == 4]
-                ):
-                    datapart.at[index, "confidence"] = int(4)
-                elif any(
-                    i in used_keys
-                    for i in [k for k, v in confidence_dict.items() if v == 2]
-                ):
-                    datapart.at[index, "confidence"] = int(2)
+                if counter == 0:
+                    # iterate over features to assign confidence level of polygons
+                    if any(
+                        i in used_keys
+                        for i in [k for k, v in confidence_dict.items() if v == 4]
+                    ):
+                        datapart.at[index, "confidence"] = int(4)
+                    elif any(
+                        i in used_keys
+                        for i in [k for k, v in confidence_dict.items() if v == 2]
+                    ):
+                        datapart.at[index, "confidence"] = int(2)
+                    else:
+                        datapart.at[index, "confidence"] = int(1)
                 else:
-                    datapart.at[index, "confidence"] = int(1)
-            else:
-                # iterate over features to buffer the lines
-                buffer_dist = None
-                for key in used_keys:
-                    # get each key, get the value for this key of this feature anc check
-                    #  if it is in the dict of buffer values.
-                    combined_key = f"{key}={row[key][index]}"
-                    if combined_key in buffer_dict:
-                        buffer_dist = buffer_dict[combined_key]
-                        break
-                if buffer_dist is not None:
-                    # buffer feature. Divide by 2, as the input defines the buffer radius
-                    row["geometry"] = row.geometry.buffer(buffer_dist / 2)
-                    # reproject feature back to WGS 84 to be able to add them to polygon features
-                    row = row.to_crs(4326)
-                    # add feature to df of buffered features
-                    buffered_linefeatures = pandas.concat(
-                        [buffered_linefeatures, row], ignore_index=True
+                    # iterate over features to buffer the lines
+                    buffer_dist = None
+                    for key in used_keys:
+                        # get each key, get the value for this key of this feature anc check
+                        #  if it is in the dict of buffer values.
+                        combined_key = f"{key}={row[key][index]}"
+                        if combined_key in buffer_dict:
+                            buffer_dist = buffer_dict[combined_key]
+                            break
+                    if buffer_dist is not None:
+                        # buffer feature. Divide by 2, as the input defines the buffer radius
+                        row["geometry"] = row.geometry.buffer(buffer_dist / 2)
+                        # reproject feature back to WGS 84 to be able to add them to polygon features
+                        row = row.to_crs(4326)
+                        # add feature to df of buffered features
+                        buffered_linefeatures = pandas.concat(
+                            [buffered_linefeatures, row], ignore_index=True
+                        )
+
+            if counter == 1:
+                # if features are a line features, write confidence level 2
+                if len(buffered_linefeatures.index) == 0:
+                    # if line features have no buffer dist specified do not add them but warn
+                    warnings.warn(
+                        f"Some line features for filter '{path_to_filter.stem}' were queried, but no buffer size specified. Those features were ignored!"
                     )
+                    continue
+                else:
+                    datapart = buffered_linefeatures
+                    del buffered_linefeatures
+                    datapart["confidence"] = int(3)
 
-        if counter == 1:
-            # if features are a line features, write confidence level 2
-            datapart = buffered_linefeatures
-            del buffered_linefeatures
-            datapart["confidence"] = int(3)
-
-        df_of_features = pandas.concat([df_of_features, datapart], ignore_index=True)
+            df_of_features = pandas.concat(
+                [df_of_features, datapart], ignore_index=True
+            )
         counter += 1
 
     df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
@@ -284,9 +302,9 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
 
 async def main():
     # load dicts needed for all rasterfiles containing the class codes, key-confidences and buffer sizes
-    confidence_dict = load_dict(CONFICENCEDICT)
-    buffer_dict = load_dict(BUFFERSIZES)
-    class_codes = load_dict(CLASSCODES)
+    confidence_dict = load_dict(CONFICENCEDICT, int)
+    buffer_dict = load_dict(BUFFERSIZES, float)
+    class_codes = load_dict(CLASSCODES, int)
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
         print(f"Started with {rastertile.name}")
@@ -315,17 +333,17 @@ async def main():
             print(f"Finished with {rastertile.name}")
         else:
             print(
-                f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}"
+                f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}\n\n"
             )
         # TODO: remove below
         break
 
     # TODO:
-    #  Zeit der Abfrage anpassen
     #  functionen weiter aufsplitten
     #  logging überarbeiten
     #  comments und docstrings adden
 
 
 if __name__ == "__main__":
+    # warnings.filterwarnings("error")
     asyncio.run(main())
