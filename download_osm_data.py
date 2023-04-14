@@ -1,7 +1,8 @@
 import asyncio
+import logging
+import logging.config
 import os
 import pathlib
-import warnings
 from typing import Coroutine, Optional
 
 import geocube.exceptions
@@ -11,6 +12,7 @@ import httpx
 import pandas
 import rasterio
 import rioxarray
+import yaml
 from geocube.api.core import make_geocube
 from geojson import Feature, FeatureCollection
 from pyproj.aoi import AreaOfInterest
@@ -23,6 +25,7 @@ from config import (
     CLASSCODES,
     CONFICENCEDICT,
     FILTERPATH,
+    LOGGCONFIG,
     OSMRASTER,
     TERRADIR,
     TIME20,
@@ -69,12 +72,14 @@ async def get_vector_areas(
     df_of_features = gpd.GeoDataFrame()
     buffered_linefeatures = gpd.GeoDataFrame()
 
+    logger.info(f"Querying OSM Data for Filter {path_to_filter.stem}")
     with open(path_to_filter) as f:
         lines = f.readlines()
     if len(lines) < 1:
-        exit(
+        logger.critical(
             f"Filter {path_to_filter.stem} empty! Fix Filter before attempting to download OSM data"
         )
+        exit()
 
     counter = 0
     for line in lines:
@@ -174,7 +179,7 @@ async def get_vector_areas(
                 # if features are a line features, write confidence level 2
                 if len(buffered_linefeatures.index) == 0:
                     # if line features have no buffer dist specified do not add them but warn
-                    warnings.warn(
+                    logger.warning(
                         f"Some line features for filter '{path_to_filter.stem}' were queried, but no buffer size specified. Those features were ignored!"
                     )
                     continue
@@ -189,6 +194,8 @@ async def get_vector_areas(
         counter += 1
 
     df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
+
+    logger.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
 
     return df_of_features
 
@@ -206,6 +213,7 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
 
 
 def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    logger.info("Attempting to resolve Overlay of Features")
     # check if overlays exist within gdf
     overlays_exist = False
     for index, row in input_df.iterrows():
@@ -245,6 +253,7 @@ async def query_osm_data(
     class_codes: dict,
     time: str,
 ) -> Optional[gpd.GeoDataFrame]:
+    logger.info("Querying OSM Data")
     # create task list, getting all vector features for each filter
     tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
@@ -258,29 +267,38 @@ async def query_osm_data(
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
     # create empty gdf to collect all features
     if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
-        print(f"\nErrors occured! Cannot process vector layers.")
         for element in tasks_results:
             if not isinstance(element, gpd.GeoDataFrame):
-                print(element + "\n")
+                logger.error(
+                    f"\nCannot process vector layers. Critical Element: {element}"
+                )
         return None
     else:
         # drop empty GeoDataFrames
         tasks_results = [df for df in tasks_results if not df.empty]
+        logger.info(
+            f"Successfully queried OSM Data and got Features for {len(tasks_results)} Classes"
+        )
         all_vector_data = gpd.GeoDataFrame(
             pandas.concat(tasks_results, ignore_index=True), crs=4326
         )
         del tasks, tasks_results
-        all_vector_data = resolve_overlays(all_vector_data)
+        if len(all_vector_data.index) > 0:
+            all_vector_data = resolve_overlays(all_vector_data)
 
-        # TODO: remove below. For Testing only
-        # with open("./data/test/gdf_cleaned.geojson", "w") as f:
-        #    f.write(all_vector_data.to_json())
+            # TODO: remove below. For Testing only
+            # with open("./data/test/gdf_cleaned.geojson", "w") as f:
+            #    f.write(all_vector_data.to_json())
 
-        return all_vector_data
+            return all_vector_data
+        else:
+            logger.warning(f"No OSM Data was found!")
+            return None
 
 
 def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -> None:
     # get WorldCover raster to make new raster with same properties
+    logging.info(f"Attempting to write Raster from Vector Features")
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
@@ -293,9 +311,7 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
             os.makedirs(OSMRASTER)
         osm_raster.rio.to_raster(osm_raster_path)
     except geocube.exceptions.VectorDataError:
-        print(
-            f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}"
-        )
+        logger.error(f"Cannot create Rastertile {rastertile.name} in year {time}.")
 
     del wc_data
 
@@ -305,9 +321,10 @@ async def main():
     confidence_dict = load_dict(CONFICENCEDICT, int)
     buffer_dict = load_dict(BUFFERSIZES, float)
     class_codes = load_dict(CLASSCODES, int)
+    logger.info(f"Successfully loaded info dicts")
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
-        print(f"Started with {rastertile.name}")
+        logger.info(f"Started with {rastertile.name}")
         # Get the year represented by the rasterfile and set Ohsome download date accordingly
         year = get_tileyear(rastertile)
         if year == "2020":
@@ -315,7 +332,7 @@ async def main():
         elif year == "2021":
             time = TIME21
         else:
-            print(
+            logger.warning(
                 f"Could not derive year for rasterfile {rastertile.name}. Cannot process this raster!"
             )
             continue
@@ -330,20 +347,24 @@ async def main():
             # convert vector data in raster data and save it
             write_as_raster(osm_data, rastertile, year)
             # TODO: Einfach keins, wie im moment?
-            print(f"Finished with {rastertile.name}")
+            logger.info(f"Finished with {rastertile.name}")
         else:
-            print(
-                f"No Data to be used for LULC Map in Rastertile {rastertile.name} in year {time}\n\n"
+            logger.warning(
+                f"No OSM Data could be queried for Rastertile {rastertile.name} in year {time}\n"
             )
         # TODO: remove below
         break
 
     # TODO:
     #  functionen weiter aufsplitten
-    #  logging überarbeiten
     #  comments und docstrings adden
 
 
 if __name__ == "__main__":
     # warnings.filterwarnings("error")
+    with open(LOGGCONFIG, "r") as f:
+        config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    logger = logging.getLogger(__name__)
+
     asyncio.run(main())
