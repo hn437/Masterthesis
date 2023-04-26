@@ -34,7 +34,7 @@ from config import (
 
 
 def get_tilename(file: pathlib.Path) -> str:
-    name = file[-15:-8]
+    name = file.stem[-11:-4]
     return name
 
 
@@ -316,7 +316,7 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
             vector_data=df, measurements=["class_code"], like=wc_data
         )
         del df
-        tilename = get_tilename(rastertile.name)
+        tilename = get_tilename(rastertile)
         osm_raster_path = OSMRASTER + tilename + f"_{time}.tif"
         if not os.path.exists(OSMRASTER):
             os.makedirs(OSMRASTER)
