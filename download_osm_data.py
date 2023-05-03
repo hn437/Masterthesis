@@ -363,8 +363,6 @@ async def main():
             logger.warning(
                 f"No OSM Data could be queried for Rastertile {rastertile.name} in year {time}\n"
             )
-        # TODO: remove below
-        break
 
     # TODO:
     #  functionen weiter aufsplitten
