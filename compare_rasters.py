@@ -27,13 +27,43 @@ def get_tilename(file: pathlib.Path) -> str:
     return name
 
 
-def get_raster_to_compare(raster, datapath):
+def get_osmyear(file: pathlib.Path) -> str:
+    year = file.stem[-4:]
+    return year
+
+
+def get_osmtile(file: pathlib.Path) -> str:
+    name = file.stem[:-5]
+    return name
+
+
+def get_wc_to_compare(raster, datapath):
     for file in datapath.rglob("*_Map.tif"):
         year = get_tileyear(file)
         tile = get_tilename(file)
         if year == "2020" and tile == get_tilename(raster):
             return file
-    logger.warning(f"Could not find corresponding WorldCover Raster for File {raster}. Cannot compare WC Data")
+    logger.warning(f"Could not find corresponding WorldCover Raster for WC File {raster}. Cannot compare WC Data")
+    return None
+
+
+def get_other_to_compare(raster, datapath):
+    for file in datapath.rglob("*.tif"):
+        year = get_tileyear(raster)
+        tile = get_tilename(raster)
+        if year == get_osmyear(file) and tile == get_osmtile(file):
+            return file
+    logger.warning(f"Could not find corresponding OSM Raster for WC File {raster}. Cannot compare Data between OSM and WC")
+    return None
+
+
+def get_osm_to_compare(raster, datapath):
+    for file in datapath.rglob("*.tif"):
+        year = get_osmyear(file)
+        tile = get_osmtile(file)
+        if year == "2020" and tile == get_osmtile(raster):
+            return file
+    logger.warning(f"Could not find corresponding OSM Raster for OSM File {raster}. Cannot compare OSM Data")
     return None
 
 
@@ -62,30 +92,47 @@ def save_raster(data, path, crs, transform):
     new_dataset.close()
 
 
-def compare_tiles(rasterpath, comparepath, resultdir):
+def detect_equality(rasterpath, comparepath, resultfile):
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
     binary_change = np.equal(rasterdata, comparedata)
-    resultpath = resultdir + f"{get_tilename(rasterpath)}_binary_change.tif"
     with rasterio.open(rasterpath) as raster:
-        save_raster(binary_change.astype(np.uint8), resultpath, raster.crs, raster.transform)
+        save_raster(binary_change.astype(np.uint8), resultfile, raster.crs, raster.transform)
+    logger.info(f"Wrote binary change raster {resultfile.name}")
 
     del rasterdata, comparedata, binary_change
 
 
-def main(compare_wc=True, compare_wc_osm=True):
+def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
     wc_datapath = pathlib.Path(TERRADIR + "Maps/")
+    osm_datapath = pathlib.Path(OSMRASTER)
     for rasterpath in wc_datapath.rglob("*_Map.tif"):
         if get_tileyear(rasterpath) == "2021" and compare_wc:
-            comparepath = get_raster_to_compare(rasterpath, wc_datapath)
+            comparepath = get_wc_to_compare(rasterpath, wc_datapath)
             if comparepath is not None:
                 resultdir = WC_COMP_PATH
+                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_wc_binary_change.tif")
                 if not os.path.exists(resultdir):
                     os.makedirs(resultdir)
-                compare_tiles(rasterpath, comparepath, resultdir)
+                detect_equality(rasterpath, comparepath, resultfile)
+        if compare_wc_osm:
+            comparepath = get_other_to_compare(rasterpath, osm_datapath)
+            if comparepath is not None:
+                resultdir = WC_OSM_COMP_PATH
+                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_{get_tileyear(rasterpath)}_wc_osm_binary_change.tif")
+                if not os.path.exists(resultdir):
+                    os.makedirs(resultdir)
+                detect_equality(rasterpath, comparepath, resultfile)
+    for rasterpath in osm_datapath.rglob("*.tif"):
+        if get_osmyear(rasterpath) == "2021" and compare_osm:
+            comparepath = get_osm_to_compare(rasterpath, osm_datapath)
+            if comparepath is not None:
+                resultdir = OSM_COMP_PATH
+                resultfile = pathlib.Path(resultdir + f"{get_osmtile(rasterpath)}_osm_binary_change.tif")
+                if not os.path.exists(resultdir):
+                    os.makedirs(resultdir)
+                detect_equality(rasterpath, comparepath, resultfile)
 
-
-
-        #TODO: add OSM comparison
+        #TODO: find specific change instead of binary (equal=1, not_equal=0)
 
 
 if __name__ == "__main__":
