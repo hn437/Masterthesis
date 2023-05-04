@@ -6,6 +6,11 @@ import pathlib
 import yaml
 import numpy as np
 import rasterio
+from rasterio import features
+import geopandas as gpd
+from shapely.geometry import shape
+from pyproj.aoi import AreaOfInterest
+from pyproj.database import query_utm_crs_info
 
 from config import (
     LOGGCONFIG,
@@ -118,7 +123,58 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile):
         save_raster(outputdata, resultfile, raster.crs, raster.transform)
     logger.info(f"Wrote raster indicating change of class to built up called {resultfile.name}")
 
+    loss_of_nature_vector(rasterpath, outputdata, resultfile)
+
     del rasterdata, comparedata, outputdata
+
+
+def loss_of_nature_vector(sourcepath, data, resultfile):
+    with rasterio.open(sourcepath) as raster:
+        transform = raster.transform
+    mask = data != 0
+    shapes = features.shapes(data.astype(np.uint16), mask=mask, transform=transform)
+
+    classcode = []
+    geometry = []
+    for shapedict, value in shapes:
+        classcode.append(value)
+        geometry.append(shape(shapedict))
+
+    # build the gdf object over the two lists
+    gdf = gpd.GeoDataFrame(
+        {'old_class': classcode, 'geometry': geometry},
+        crs="EPSG:4326"
+    )
+    gdf["new_class"] = int(50)
+
+    # reproject to utm to calculate area
+    # get example coordinate to query useable UTM projection
+    example_coords = gdf["geometry"][0].bounds
+    # query UTM code for corner coordinate
+    utm_crs_list = query_utm_crs_info(
+        datum_name="WGS 84",
+        area_of_interest=AreaOfInterest(
+            west_lon_degree=example_coords[0],
+            south_lat_degree=example_coords[1],
+            east_lon_degree=example_coords[0],
+            north_lat_degree=example_coords[1],
+        ),
+    )
+    utm_code = utm_crs_list[0].code
+    # reproject feature to queried UTM
+    gdf.to_crs(utm_code, inplace=True)
+
+    gdf["area"] = gdf.area
+
+    # reproject back to wgs 84
+    gdf.to_crs(4326, inplace=True)
+
+    outputpath = pathlib.Path(f"{resultfile.parent}/{resultfile.stem}.geojson")
+
+    with open(outputpath, "w") as f:
+        f.write(gdf.to_json())
+
+    logger.info(f"Wrote vector indicating change of class to built up called {outputpath.name}")
 
 
 def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
