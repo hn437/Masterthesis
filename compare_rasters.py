@@ -94,12 +94,31 @@ def save_raster(data, path, crs, transform):
 
 def detect_equality(rasterpath, comparepath, resultfile):
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
-    binary_change = np.equal(rasterdata, comparedata)
+    #binary_change = np.equal(rasterdata, comparedata)
+    # use isclose with a tolerance of 0 as it can compare nan values (both nan -> no change)
+    binary_change = np.isclose(rasterdata, comparedata, rtol=0, atol=0, equal_nan=True)
     with rasterio.open(rasterpath) as raster:
         save_raster(binary_change.astype(np.uint8), resultfile, raster.crs, raster.transform)
     logger.info(f"Wrote binary change raster {resultfile.name}")
 
     del rasterdata, comparedata, binary_change
+
+
+def detect_loss_of_nature(rasterpath, comparepath, resultfile):
+    """
+    Get "old" classification where raster was not classified as built up but is now.
+    :param rasterpath:
+    :param comparepath:
+    :param resultfile:
+    :return: None
+    """
+    rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
+    outputdata = np.where((rasterdata==50) & (comparedata!=50),comparedata,0)
+    with rasterio.open(rasterpath) as raster:
+        save_raster(outputdata, resultfile, raster.crs, raster.transform)
+    logger.info(f"Wrote raster indicating change of class to built up called {resultfile.name}")
+
+    del rasterdata, comparedata, outputdata
 
 
 def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
@@ -110,27 +129,35 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
             comparepath = get_wc_to_compare(rasterpath, wc_datapath)
             if comparepath is not None:
                 resultdir = WC_COMP_PATH
-                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_wc_binary_change.tif")
                 if not os.path.exists(resultdir):
                     os.makedirs(resultdir)
+                # binary change
+                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_wc_binary_change.tif")
                 detect_equality(rasterpath, comparepath, resultfile)
+                # old classes have become built up
+                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_wc_loss_of_nature.tif")
+                detect_loss_of_nature(rasterpath, comparepath, resultfile)
         if compare_wc_osm:
             comparepath = get_other_to_compare(rasterpath, osm_datapath)
             if comparepath is not None:
                 resultdir = WC_OSM_COMP_PATH
-                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_{get_tileyear(rasterpath)}_wc_osm_binary_change.tif")
                 if not os.path.exists(resultdir):
                     os.makedirs(resultdir)
+                resultfile = pathlib.Path(resultdir + f"{get_tilename(rasterpath)}_{get_tileyear(rasterpath)}_wc_osm_binary_change.tif")
                 detect_equality(rasterpath, comparepath, resultfile)
     for rasterpath in osm_datapath.rglob("*.tif"):
         if get_osmyear(rasterpath) == "2021" and compare_osm:
             comparepath = get_osm_to_compare(rasterpath, osm_datapath)
             if comparepath is not None:
                 resultdir = OSM_COMP_PATH
-                resultfile = pathlib.Path(resultdir + f"{get_osmtile(rasterpath)}_osm_binary_change.tif")
                 if not os.path.exists(resultdir):
                     os.makedirs(resultdir)
+                # binary change
+                resultfile = pathlib.Path(resultdir + f"{get_osmtile(rasterpath)}_osm_binary_change.tif")
                 detect_equality(rasterpath, comparepath, resultfile)
+                # old classes have become built up
+                resultfile = pathlib.Path(resultdir + f"{get_osmtile(rasterpath)}_osm_loss_of_nature.tif")
+                detect_loss_of_nature(rasterpath, comparepath, resultfile)
 
         #TODO: find specific change instead of binary (equal=1, not_equal=0)
 
@@ -142,7 +169,7 @@ if __name__ == "__main__":
         logging.config.dictConfig(config)
     logger = logging.getLogger(__name__)
 
-    main()
+    main(compare_wc=False, compare_wc_osm=False, compare_osm=True)
 
     #TODO:
     # add logging
