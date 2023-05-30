@@ -34,12 +34,12 @@ from config import (
 
 
 def get_tilename(file: pathlib.Path) -> str:
-    name = file.stem[-11:-4]
+    name = file.stem[-13:-4]
     return name
 
 
 def get_tileyear(file: pathlib.Path) -> str:
-    year = file.stem[-21:-17]
+    year = file.stem[-23:-19]
     return year
 
 
