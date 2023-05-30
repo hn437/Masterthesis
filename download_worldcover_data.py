@@ -46,7 +46,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
     file_counter = 0
     for infile in INFILES:
-        logger.info(f"\nWorking on Inputfile {file_counter +1} of {len(INFILES)}")
+        logger.info(f"Working on Inputfile {file_counter +1} of {len(INFILES)}")
         # import geodata of extent to be imported from WorldCover
         gdf = import_geodata(INPUTDIR, infile)
 
@@ -57,7 +57,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             continue
 
         for index in gdf.index:
-            logger.info(f"\tWorking on feature {index+1} of {len(gdf)}")
+            logger.info(f"Working on feature {index+1} of {len(gdf)}")
             feature = gdf.loc[[index]]
             geom = feature.geometry[index]
 
@@ -69,10 +69,10 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             )
 
             # download the products to the given directory
-            logger.info(f"\t\tStarted download of WorldCover data.")
+            logger.info(f"Started download of WorldCover data.")
             catalogue.download_products(products_2020, directory, force=True)
             catalogue.download_products(products_2021, directory, force=True)
-            logger.info(f"\t\tFinished download of WorldCover data.")
+            logger.info(f"Finished download of WorldCover data.")
 
             clean_terradata(directory, file_counter, index, geom)
 
@@ -80,8 +80,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
     # remove scratch dir
     shutil.rmtree(directory)
-
-    logger.info(f"\n\nFinished downloading WorldCover Data for all Files and Features.")
+    logger.info(f"Finished downloading WorldCover Data for all Files and Features.\n\n")
 
 
 def clean_terradata(
@@ -98,12 +97,12 @@ def clean_terradata(
         os.makedirs(quality_dir)
 
     # clip all raster
-    logger.info(f"\t\tClipping WorldCover Data to Feature Extent.")
+    logger.info(f"Clipping WorldCover Data to Feature Extent.")
     clip_all_downloads(scratch_dir, feature_geom)
 
     # check if AoI overlays multiple WorldCover Tiles
     if len(list(scratch_dir.rglob("*2020*_Map.tif"))) > 1:
-        logger.info(f"\t\tMerging WorldCover Data and saving it")
+        logger.info(f"Merging WorldCover Data and saving it")
         # make lists of files olding Maps or Data Quality per year
         maps_20 = list(scratch_dir.rglob("*2020*_Map.tif"))
         maps_21 = list(scratch_dir.rglob("*2021*_Map.tif"))
@@ -117,7 +116,7 @@ def clean_terradata(
         merge_tiles(quality_21, quality_dir, "InputQuality", 1, feature_id)
 
     else:
-        logger.info(f"\t\tSaving WorldCover Data.")
+        logger.info(f"Saving WorldCover Data.")
         # AoI within a single raster tile -> no merging, but renaming and moving to dir
         for file in scratch_dir.rglob("*_Map.tif"):
             new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:03}id{feature_id:03}_Map.tif"
