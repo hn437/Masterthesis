@@ -11,6 +11,7 @@ import shapely
 import yaml
 from rasterio.mask import mask
 from rasterio.merge import merge
+from shapely.geometry import box
 from terracatalogueclient import Catalogue
 
 from config import INFILES, INPUTDIR, LOGGCONFIG, PASSWORD, TERRADIR, USERNAME
@@ -38,7 +39,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             if filename.endswith(".geojson"):
                 INFILES.append(filename)
     if len(INFILES) > 999:
-        logger.error("Too many Files stated for Input. Max 999 Files allowed.")
+        logger.error("Too many Files stated for Input. Max 999 Files allowed")
         sys.exit(1)
 
     if not os.path.exists(directory):
@@ -52,7 +53,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
         if len(gdf.index) > 999:
             logger.error(
-                f"Too many Features in File {infile}. Max 999 Features allowed."
+                f"Too many Features in File {infile}. Max 999 Features allowed"
             )
             continue
 
@@ -69,10 +70,10 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             )
 
             # download the products to the given directory
-            logger.info(f"Started download of WorldCover data.")
+            logger.info(f"Started download of WorldCover data")
             catalogue.download_products(products_2020, directory, force=True)
             catalogue.download_products(products_2021, directory, force=True)
-            logger.info(f"Finished download of WorldCover data.")
+            logger.info(f"Finished download of WorldCover data")
 
             clean_terradata(directory, file_counter, index, geom)
 
@@ -80,7 +81,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
     # remove scratch dir
     shutil.rmtree(directory)
-    logger.info(f"Finished downloading WorldCover Data for all Files and Features.\n\n")
+    logger.info(f"Finished downloading WorldCover Data for all Files and Features\n\n")
 
 
 def clean_terradata(
@@ -97,7 +98,7 @@ def clean_terradata(
         os.makedirs(quality_dir)
 
     # clip all raster
-    logger.info(f"Clipping WorldCover Data to Feature Extent.")
+    logger.info(f"Clipping WorldCover Data to Feature Extent")
     clip_all_downloads(scratch_dir, feature_geom)
 
     # check if AoI overlays multiple WorldCover Tiles
@@ -116,7 +117,7 @@ def clean_terradata(
         merge_tiles(quality_21, quality_dir, "InputQuality", 1, feature_id)
 
     else:
-        logger.info(f"Saving WorldCover Data.")
+        logger.info(f"Saving WorldCover Data")
         # AoI within a single raster tile -> no merging, but renaming and moving to dir
         for file in scratch_dir.rglob("*_Map.tif"):
             new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:03}id{feature_id:03}_Map.tif"
@@ -130,9 +131,13 @@ def clean_terradata(
 def clip_all_downloads(
     scratch_dir: pathlib.Path, feature_geom: shapely.geometry.polygon.Polygon
 ) -> None:
+    # create bounding box instead of using original feature
+    bounds = feature_geom.bounds
+    geom = box(*bounds)
+
     for tile in list(scratch_dir.rglob("*.tif")):
         with rio.open(tile) as src:
-            out_image, out_transform = mask(src, [feature_geom], crop=True)
+            out_image, out_transform = mask(src, [geom], crop=True)
             out_meta = src.meta.copy()  # copy the metadata of the source DEM
 
         out_meta.update(
