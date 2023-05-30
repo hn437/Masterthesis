@@ -1,3 +1,5 @@
+import logging
+import logging.config
 import os
 import pathlib
 import shutil
@@ -6,11 +8,12 @@ import sys
 import geopandas as gpd
 import rasterio as rio
 import shapely
+import yaml
 from rasterio.mask import mask
 from rasterio.merge import merge
 from terracatalogueclient import Catalogue
 
-from config import INFILES, INPUTDIR, PASSWORD, TERRADIR, USERNAME
+from config import INFILES, INPUTDIR, LOGGCONFIG, PASSWORD, TERRADIR, USERNAME
 
 
 def import_geodata(input_dir: str, infile: str) -> gpd.GeoDataFrame:
@@ -34,6 +37,9 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
         for filename in os.listdir(INPUTDIR):
             if filename.endswith(".geojson"):
                 INFILES.append(filename)
+    if len(INFILES) > 999:
+        logger.error("Too many Files stated for Input. Max 999 Files allowed.")
+        sys.exit(1)
 
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -43,6 +49,12 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
         print(f"\nWorking on Inputfile {file_counter +1} of {len(INFILES)}")
         # import geodata of extent to be imported from WorldCover
         gdf = import_geodata(INPUTDIR, infile)
+
+        if len(gdf.index) > 999:
+            logger.error(
+                f"Too many Features in File {infile}. Max 999 Features allowed."
+            )
+            continue
 
         for index in gdf.index:
             print(f"\tWorking on feature {index+1} of {len(gdf)}")
@@ -108,11 +120,11 @@ def clean_terradata(
         print(f"\t\tSaving WorldCover Data.")
         # AoI within a single raster tile -> no merging, but renaming and moving to dir
         for file in scratch_dir.rglob("*_Map.tif"):
-            new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:02}id{feature_id:02}_Map.tif"
+            new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:03}id{feature_id:03}_Map.tif"
             os.rename(file, maps_dir + new_name)
 
         for file in scratch_dir.rglob("*_InputQuality.tif"):
-            new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:02}id{feature_id:02}_InputQuality.tif"
+            new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:03}id{feature_id:03}_InputQuality.tif"
             os.rename(file, quality_dir + new_name)
 
 
@@ -166,7 +178,7 @@ def merge_tiles(
     )
     output_path = (
         dir_path
-        + f"ESA_WorldCover_10m_{str(tile.stem)[19:23]}_v100_f{file_no:02}id{feature_id:02}_{tiletype}.tif"
+        + f"ESA_WorldCover_10m_{str(tile.stem)[19:23]}_v100_f{file_no:03}id{feature_id:03}_{tiletype}.tif"
     )
     with rio.open(output_path, "w", **output_meta) as m:
         m.write(mosaic)
@@ -187,4 +199,9 @@ def main():
 
 
 if __name__ == "__main__":
+    with open(LOGGCONFIG, "r") as f:
+        config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    logger = logging.getLogger(__name__)
+
     main()
