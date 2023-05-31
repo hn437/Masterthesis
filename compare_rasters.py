@@ -23,12 +23,14 @@ from config import (
 
 
 def get_tileyear(file: pathlib.Path) -> str:
-    year = file.stem[-21:-17]
+    year = file.stem[-23:-19]
     return year
 
 
 def get_tilename(file: pathlib.Path) -> str:
-    name = file.stem[-11:-4]
+    name = file.stem[-13:-4]
+    file_no = int(file.stem[-12:-9])
+    feature = int(file.stem[-7:-4])
     return name
 
 
@@ -220,6 +222,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     + f"{get_tilename(rasterpath)}_{get_tileyear(rasterpath)}_wc_osm_binary_change.tif"
                 )
                 detect_equality(rasterpath, comparepath, resultfile)
+                #TODO: Accuracy & Completeness
     for rasterpath in osm_datapath.rglob("*.tif"):
         if get_osmyear(rasterpath) == "2021" and compare_osm:
             comparepath = get_osm_to_compare(rasterpath, osm_datapath)
@@ -251,5 +254,5 @@ if __name__ == "__main__":
     main(compare_wc=True, compare_wc_osm=True, compare_osm=True)
 
     # TODO:
-    # add logging
-    # add typehint
+    #  add logging
+    #  add typehint
