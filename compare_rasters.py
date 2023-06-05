@@ -5,14 +5,16 @@ import pathlib
 
 import geopandas as gpd
 import numpy as np
+import pandas
 import rasterio
 import yaml
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 from rasterio import features
-from shapely.geometry import shape
+from shapely.geometry import box, shape
 
 from config import (
+    COMP_PATH,
     INFILES,
     INPUTDIR,
     LOGGCONFIG,
@@ -33,7 +35,7 @@ def get_tileyear(file: pathlib.Path) -> str:
 def get_tilename(file: pathlib.Path) -> str:
     name = file.stem[-13:-4]
     file_no = int(file.stem[-12:-9])
-    feature = int(file.stem[-7:-4])  #TODO: check if actually used
+    feature = int(file.stem[-7:-4])  # TODO: check if actually used
     return name
 
 
@@ -120,7 +122,23 @@ def detect_equality(rasterpath, comparepath, resultfile):
         )
     logger.info(f"Wrote binary change raster {resultfile.name}")
 
+    # calculate statistics
+    no_of_pixel = binary_change.size
+    pixel_matching = binary_change.sum()
+    percentage_matching = pixel_matching / no_of_pixel * 100
+    # percentage_deviation = np.invert(binary_change).sum()/no_of_pixel*100
+    nan_pixel_compare = np.count_nonzero(np.isnan(comparedata))
+    completeness_percentage_compare = 100 - nan_pixel_compare / no_of_pixel * 100
+
     del rasterdata, comparedata, binary_change
+
+    return (
+        no_of_pixel,
+        pixel_matching,
+        percentage_matching,
+        nan_pixel_compare,
+        completeness_percentage_compare,
+    )
 
 
 def detect_loss_of_nature(rasterpath, comparepath, resultfile):
@@ -203,6 +221,9 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
             if filename.endswith(".geojson"):
                 INFILES.append(filename)
 
+    # create a vector which holds statistics for all raster
+    statistics = gpd.GeoDataFrame()
+
     file_counter = 0
     for infile in INFILES:
         logger.info(f"Working on Inputfile {file_counter + 1} of {len(INFILES)}")
@@ -210,8 +231,17 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
         gdf = import_geodata(INPUTDIR, infile)
 
         for index in gdf.index:
-            logger.info(f"Working on feature {index+1} of {len(gdf)}")
-            feature = gdf.loc[[index]]  #TODO: check if feature is needed
+            logger.info(f"Working on Feature {index+1} of {len(gdf)}")
+            bounds = gdf.loc[[index]].geometry[index].bounds
+            # bounds = feature.geometry[index].bounds
+            box_geom = box(*bounds)
+
+            # create a vector feature for this AoI to hold all stats and be merged into the general one
+            feat_stats = gpd.GeoDataFrame(
+                {"file_no": file_counter, "feature_no": index, "geometry": box_geom},
+                crs="EPSG:4326",
+                index=[0],
+            )
 
             if compare_wc:
                 rastername_finder = f"ESA_WorldCover_10m_2021_v100_f{file_counter:03}id{index:03}_Map.tif"
@@ -225,28 +255,44 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     resultfile = pathlib.Path(
                         resultdir + f"{get_tilename(rasterpath)}_wc_binary_change.tif"
                     )
-                    detect_equality(rasterpath, comparepath, resultfile)
+                    (
+                        feat_stats["pixel_count"],
+                        feat_stats["WC_Match_Pixel"],
+                        feat_stats["WC_Match_Percent"],
+                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:3]
+
                     # old classes have become built up
                     resultfile = pathlib.Path(
                         resultdir + f"{get_tilename(rasterpath)}_wc_loss_of_nature.tif"
                     )
                     detect_loss_of_nature(rasterpath, comparepath, resultfile)
                 else:
-                    logger.error(f"Cannot find WC Raster to be compared with {rasterpath}")
+                    logger.error(
+                        f"Cannot find WC Raster to be compared with {rasterpath}"
+                    )
             if compare_wc_osm:
-                for rasterpath in wc_datapath.rglob(f"*f{file_counter:03}id{index:03}_Map.tif"):
+                for rasterpath in wc_datapath.rglob(
+                    f"*f{file_counter:03}id{index:03}_Map.tif"
+                ):
                     comparepath = get_other_to_compare(rasterpath, osm_datapath)
                     if comparepath is not None:
                         resultdir = WC_OSM_COMP_PATH
                         if not os.path.exists(resultdir):
                             os.makedirs(resultdir)
+                        tile_year = get_tileyear(rasterpath)
                         resultfile = pathlib.Path(
                             resultdir
-                            + f"{get_tilename(rasterpath)}_{get_tileyear(rasterpath)}_wc_osm_binary_change.tif"
+                            + f"{get_tilename(rasterpath)}_{tile_year}_wc_osm_binary_change.tif"
                         )
-                        detect_equality(rasterpath, comparepath, resultfile)
+                        (
+                            feat_stats[f"osm_acc_{tile_year}"],
+                            feat_stats[f"osm_nan_pixel_{tile_year}"],
+                            feat_stats[f"osm_completeness_{tile_year}"],
+                        ) = detect_equality(rasterpath, comparepath, resultfile)[2:]
                     else:
-                        logger.error(f"Cannot find OSM Raster to be compared with WC Raster {rasterpath}")
+                        logger.error(
+                            f"Cannot find OSM Raster to be compared with WC Raster {rasterpath}"
+                        )
             if compare_osm:
                 rastername_finder = f"f{file_counter:03}id{index:03}_2021.tif"
                 rasterpath = pathlib.Path(osm_datapath / rastername_finder)
@@ -259,17 +305,28 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_binary_change.tif"
                     )
-                    detect_equality(rasterpath, comparepath, resultfile)
+                    (
+                        feat_stats["pixel_count"],
+                        feat_stats["OSM_Match_Pixel"],
+                        feat_stats["OSM_Match_Percent"],
+                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:3]
                     # old classes have become built up
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_loss_of_nature.tif"
                     )
                     detect_loss_of_nature(rasterpath, comparepath, resultfile)
                 else:
-                    logger.error(f"Cannot find OSM Raster to be compared with {rasterpath}")
+                    logger.error(
+                        f"Cannot find OSM Raster to be compared with {rasterpath}"
+                    )
 
-            #TODO: Accuracy & Completeness
+            statistics = pandas.concat([statistics, feat_stats], ignore_index=True)
+
             # TODO: find specific change instead of binary (equal=1, not_equal=0)
+
+    stats_outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
+    with open(stats_outpath, "w") as file:
+        file.write(statistics.to_json())
 
 
 if __name__ == "__main__":
