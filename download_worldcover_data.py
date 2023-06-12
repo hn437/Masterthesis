@@ -137,7 +137,7 @@ def clip_all_downloads(
 
     for tile in list(scratch_dir.rglob("*.tif")):
         with rio.open(tile) as src:
-            out_image, out_transform = mask(src, [geom], crop=True)
+            out_image, out_transform = mask(src, [geom], crop=True, all_touched=True)
             out_meta = src.meta.copy()  # copy the metadata of the source DEM
 
         out_meta.update(
