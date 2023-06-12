@@ -317,8 +317,8 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
-            vector_data=df, measurements=["class_code"], like=wc_data
-        )
+            vector_data=df, measurements=["class_code"], like=wc_data, fill=999
+        ).astype("int16")
         del df
         tilename = get_tilename(rastertile)
         osm_raster_path = OSMRASTER + tilename + f"_{time}.tif"
