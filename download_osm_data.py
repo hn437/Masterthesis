@@ -105,7 +105,9 @@ async def get_vector_areas(
                 response = await client.post(APIENDPOINT, data=data)
             response.raise_for_status()
             if response.status_code != 200:
-                logger.error(f"Ohsome API Query for Filter {path_to_filter.stem} not successful. Status Code: {response.status_code}. {response.text}")
+                logger.error(
+                    f"Ohsome API Query for Filter {path_to_filter.stem} not successful. Status Code: {response.status_code}. {response.text}"
+                )
                 break
             else:
                 datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
@@ -123,9 +125,9 @@ async def get_vector_areas(
                     # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
                     if counter == 1:
                         # get example coordinate to query useable UTM projection
-                        tile_corner_coords = extent["features"][0]["geometry"]["coordinates"][
-                            0
-                        ][0]
+                        tile_corner_coords = extent["features"][0]["geometry"][
+                            "coordinates"
+                        ][0][0]
                         # query UTM code for that coordinate
                         utm_crs_list = query_utm_crs_info(
                             datum_name="WGS 84",
@@ -151,12 +153,16 @@ async def get_vector_areas(
                             # iterate over features to assign confidence level of polygons
                             if any(
                                 i in used_keys
-                                for i in [k for k, v in confidence_dict.items() if v == 4]
+                                for i in [
+                                    k for k, v in confidence_dict.items() if v == 4
+                                ]
                             ):
                                 datapart.at[index, "confidence"] = int(4)
                             elif any(
                                 i in used_keys
-                                for i in [k for k, v in confidence_dict.items() if v == 2]
+                                for i in [
+                                    k for k, v in confidence_dict.items() if v == 2
+                                ]
                             ):
                                 datapart.at[index, "confidence"] = int(2)
                             else:
@@ -275,9 +281,7 @@ async def query_osm_data(
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
     # create empty gdf to collect all features
     if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
-        logger.error(
-            f"Cannot Process Vector DataFrames due to Errors"
-        )
+        logger.error(f"Cannot Process Vector DataFrames due to Errors")
         for index, element in enumerate(tasks_results):
             if not isinstance(element, gpd.GeoDataFrame):
                 logger.error(
