@@ -4,16 +4,24 @@ import os
 import pathlib
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas
+import pandas as pd
 import rasterio
+import seaborn as sns
 import yaml
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 from rasterio import features
 from shapely.geometry import box, shape
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    classification_report,
+    confusion_matrix,
+)
 
 from config import (
+    CM_PATH,
     COMP_PATH,
     INFILES,
     INPUTDIR,
@@ -127,8 +135,8 @@ def detect_equality(rasterpath, comparepath, resultfile):
     pixel_matching = binary_change.sum()
     percentage_matching = pixel_matching / no_of_pixel * 100
     # percentage_deviation = np.invert(binary_change).sum()/no_of_pixel*100
-    nan_pixel_compare = np.count_nonzero(np.isnan(comparedata))
-    completeness_percentage_compare = 100 - nan_pixel_compare / no_of_pixel * 100
+    nan_pixel_compare = np.count_nonzero(comparedata == 999)
+    completeness_percentage_compare = 100 - ((nan_pixel_compare / no_of_pixel) * 100)
 
     del rasterdata, comparedata, binary_change
 
@@ -212,6 +220,69 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
     )
 
 
+def create_cm(rasterdata, comparedata, year):
+    # calculate confusion matrix. First Position: actual, Second: predicted
+    actual = np.nan_to_num(rasterdata.flatten(), nan=999)
+    pred = np.nan_to_num(comparedata.flatten(), nan=999)
+
+    # create confusion Matrix using No. of Pixel
+    df_confusion_pandas = pd.crosstab(
+        actual, pred, rownames=["WC Classes"], colnames=["OSM Classes"], margins=True
+    )
+    df_confusion_pandas = df_confusion_pandas.reindex(
+        index=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"],
+        columns=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"],
+        fill_value=0,
+    )
+
+    fig, ax = plt.subplots(figsize=(20, 15))
+    cm_map = sns.heatmap(
+        df_confusion_pandas,
+        annot=True,
+        fmt="",
+        robust=True,
+        annot_kws={"fontsize": 9},
+        square=True,
+        ax=ax,
+        cmap="Blues",
+    )
+    ax.set_xlabel("OSM Classes", labelpad=10)
+    ax.set_ylabel("WC Classes", labelpad=10)
+    plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year})")
+    border_linewidth = 1
+    for _, spine in cm_map.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(border_linewidth)
+    # plt.show()
+    # plt.close()
+    if not os.path.exists(CM_PATH):
+        os.makedirs(CM_PATH)
+    save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_absolut.png")
+    plt.savefig(save_path_norm)
+
+    # calculate CM with normalized Values
+    fig, ax = plt.subplots(figsize=(20, 15))
+    cm_display = ConfusionMatrixDisplay.from_predictions(
+        actual,
+        pred,
+        labels=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+        normalize="true",
+        values_format=".3f",
+        cmap="Blues",
+        ax=ax,
+    )
+    cm_display.ax_.set(xlabel="OSM Classes", ylabel="WC Classes")
+    plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year})")
+    save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_normalised.png")
+    plt.savefig(save_path_norm)
+    logger.info(f"Wrote Confusion Matrices for year {year}")
+
+    cm_report = classification_report(actual, pred, zero_division=0)
+    save_path_report = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_Report.txt")
+    with open(save_path_report, "w") as file:
+        file.write(cm_report)
+
+
 def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
     wc_datapath = pathlib.Path(TERRADIR + "Maps/")
     osm_datapath = pathlib.Path(OSMRASTER)
@@ -232,10 +303,15 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
 
         for index in gdf.index:
             logger.info(f"Working on Feature {index+1} of {len(gdf)}")
-            bounds = gdf.loc[[index]].geometry[index].bounds
-            # bounds = feature.geometry[index].bounds
-            box_geom = box(*bounds)
 
+            # Take WC Raster to get extent from to create vector file and save statistics to it
+            rastername_finder = (
+                f"ESA_WorldCover_10m_2021_v100_f{file_counter:03}id{index:03}_Map.tif"
+            )
+            rasterpath = pathlib.Path(wc_datapath / rastername_finder)
+            with rasterio.open(rasterpath) as raster:
+                bounds = raster.bounds
+            box_geom = box(*bounds)
             # create a vector feature for this AoI to hold all stats and be merged into the general one
             feat_stats = gpd.GeoDataFrame(
                 {"file_no": file_counter, "feature_no": index, "geometry": box_geom},
@@ -289,6 +365,11 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                             feat_stats[f"osm_nan_pixel_{tile_year}"],
                             feat_stats[f"osm_completeness_{tile_year}"],
                         ) = detect_equality(rasterpath, comparepath, resultfile)[2:]
+
+                        # create confusion matrices
+                        wc_data, osm_data = get_rasterdata(rasterpath, comparepath)
+                        create_cm(wc_data, osm_data, get_tileyear(rasterpath))
+                        del wc_data, osm_data
                     else:
                         logger.error(
                             f"Cannot find OSM Raster to be compared with WC Raster {rasterpath}"
@@ -320,9 +401,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         f"Cannot find OSM Raster to be compared with {rasterpath}"
                     )
 
-            statistics = pandas.concat([statistics, feat_stats], ignore_index=True)
-
-            # TODO: find specific change instead of binary (equal=1, not_equal=0)
+            statistics = pd.concat([statistics, feat_stats], ignore_index=True)
 
     stats_outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
     with open(stats_outpath, "w") as file:
