@@ -149,25 +149,48 @@ def detect_equality(rasterpath, comparepath, resultfile):
     )
 
 
-def detect_loss_of_nature(rasterpath, comparepath, resultfile):
+def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     """
     Get "old" classification where raster was not classified as built up but is now.
     :param rasterpath:
     :param comparepath:
     :param resultfile:
-    :return: None
+    :return:
     """
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
+    # write 0 where class built-up was already present or is not present in newer dataset
     outputdata = np.where((rasterdata == 50) & (comparedata != 50), comparedata, 0)
     with rasterio.open(rasterpath) as raster:
         save_raster(outputdata, resultfile, raster.crs, raster.transform)
     logger.info(
         f"Wrote raster indicating change of class to built up called {resultfile.name}"
     )
-
+    # write as vector
     loss_of_nature_vector(rasterpath, outputdata, resultfile)
+    # repeat for aggregated classes
+    aggregated_data = np.where(
+        (outputdata == 10)
+        | (outputdata == 20)
+        | (outputdata == 30)
+        | (outputdata == 40)
+        | (outputdata == 90)
+        | (outputdata == 95)
+        | (outputdata == 100),
+        120,
+        outputdata,
+    )
+    aggregated_outpath = pathlib.Path(
+        f"{resultfile.parent}/{resultfile.stem}_aggregated_vegetation.tif"
+    )
+    with rasterio.open(rasterpath) as raster:
+        save_raster(aggregated_data, aggregated_outpath, raster.crs, raster.transform)
+    logger.info(
+        f"Wrote raster indicating change of class to built up with aggregated nature class"
+    )
 
     del rasterdata, comparedata, outputdata
+
+    return aggregated_data
 
 
 def loss_of_nature_vector(sourcepath, data, resultfile):
@@ -185,6 +208,17 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
     # build the gdf object over the two lists
     gdf = gpd.GeoDataFrame(
         {"old_class": classcode, "geometry": geometry}, crs="EPSG:4326"
+    )
+    gdf["agg_vegetation"] = np.where(
+        (gdf["old_class"] == 10)
+        | (gdf["old_class"] == 20)
+        | (gdf["old_class"] == 30)
+        | (gdf["old_class"] == 40)
+        | (gdf["old_class"] == 90)
+        | (gdf["old_class"] == 95)
+        | (gdf["old_class"] == 100),
+        120,
+        gdf["old_class"],
     )
     gdf["new_class"] = int(50)
 
@@ -220,18 +254,49 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
     )
 
 
-def create_cm(rasterdata, comparedata, year):
+def create_cm(rasterdata, comparedata, year=None, aggregated=False, change_cm=False):
     # calculate confusion matrix. First Position: actual, Second: predicted
     actual = np.nan_to_num(rasterdata.flatten(), nan=999)
     pred = np.nan_to_num(comparedata.flatten(), nan=999)
+
+    if aggregated:
+        actual = np.where(
+            (actual == 10)
+            | (actual == 20)
+            | (actual == 30)
+            | (actual == 40)
+            | (actual == 90)
+            | (actual == 95)
+            | (actual == 100),
+            120,
+            actual,
+        )
+        pred = np.where(
+            (pred == 10)
+            | (pred == 20)
+            | (pred == 30)
+            | (pred == 40)
+            | (pred == 90)
+            | (pred == 95)
+            | (pred == 100),
+            120,
+            actual,
+        )
 
     # create confusion Matrix using No. of Pixel
     df_confusion_pandas = pd.crosstab(
         actual, pred, rownames=["WC Classes"], colnames=["OSM Classes"], margins=True
     )
+    if aggregated or change_cm:
+        index_WC = [0, 120, 50, 60, 70, 80, "All"]
+        columns_OSM = [0, 120, 50, 60, 70, 80, 999, "All"]
+    else:
+        index_WC = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"]
+        columns_OSM = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"]
+
     df_confusion_pandas = df_confusion_pandas.reindex(
-        index=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"],
-        columns=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"],
+        index=index_WC,
+        columns=columns_OSM,
         fill_value=0,
     )
 
@@ -248,16 +313,27 @@ def create_cm(rasterdata, comparedata, year):
     )
     ax.set_xlabel("OSM Classes", labelpad=10)
     ax.set_ylabel("WC Classes", labelpad=10)
-    plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year})")
     border_linewidth = 1
     for _, spine in cm_map.spines.items():
         spine.set_visible(True)
         spine.set_linewidth(border_linewidth)
-    # plt.show()
-    # plt.close()
     if not os.path.exists(CM_PATH):
         os.makedirs(CM_PATH)
-    save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_absolut.png")
+    if aggregated:
+        plt.title(
+            f"Confusion Matrix stating No. of Pixel for aggregated Classes (WC vs. OSM {year})"
+        )
+        save_path_norm = pathlib.Path(
+            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_absolut.png"
+        )
+    elif change_cm:
+        plt.title(
+            f"Confusion Matrix stating No. of Pixel of Classes changed to Built-Up"
+        )
+        save_path_norm = pathlib.Path(f"{CM_PATH}/Class_Change_absolut.png")
+    else:
+        plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year})")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_absolut.png")
     plt.savefig(save_path_norm)
 
     # calculate CM with normalized Values
@@ -265,20 +341,46 @@ def create_cm(rasterdata, comparedata, year):
     cm_display = ConfusionMatrixDisplay.from_predictions(
         actual,
         pred,
-        labels=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+        labels=columns_OSM[:-1],
         normalize="true",
-        values_format=".3f",
+        values_format=".4f",
         cmap="Blues",
         ax=ax,
     )
     cm_display.ax_.set(xlabel="OSM Classes", ylabel="WC Classes")
-    plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year})")
-    save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_normalised.png")
+    if aggregated:
+        plt.title(
+            f"Confusion Matrix stating relative Values for aggregated Classes (WC vs. OSM {year})"
+        )
+        save_path_norm = pathlib.Path(
+            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_normalised.png"
+        )
+    elif change_cm:
+        plt.title(
+            f"Confusion Matrix stating relative Values of Classes changed to Built-Up"
+        )
+        save_path_norm = pathlib.Path(f"{CM_PATH}/Class_Change_normalised.png")
+    else:
+        plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year})")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_normalised.png")
     plt.savefig(save_path_norm)
-    logger.info(f"Wrote Confusion Matrices for year {year}")
+
+    if change_cm:
+        logger.info(f"Wrote Confusion Matrices for Class Change to Built-up")
+    else:
+        logger.info(
+            f"Wrote Confusion Matrices for year {year}, aggregation={aggregated}"
+        )
 
     cm_report = classification_report(actual, pred, zero_division=0)
-    save_path_report = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_Report.txt")
+    if aggregated:
+        save_path_report = pathlib.Path(
+            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_Report.txt"
+        )
+    elif change_cm:
+        save_path_report = pathlib.Path(f"{CM_PATH}/Class_Change_Report.txt")
+    else:
+        save_path_report = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_Report.txt")
     with open(save_path_report, "w") as file:
         file.write(cm_report)
 
@@ -341,7 +443,9 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     resultfile = pathlib.Path(
                         resultdir + f"{get_tilename(rasterpath)}_wc_loss_of_nature.tif"
                     )
-                    detect_loss_of_nature(rasterpath, comparepath, resultfile)
+                    aggregated_change_wc = detect_loss_of_nature(
+                        rasterpath, comparepath, resultfile
+                    )
                 else:
                     logger.error(
                         f"Cannot find WC Raster to be compared with {rasterpath}"
@@ -368,7 +472,15 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
 
                         # create confusion matrices
                         wc_data, osm_data = get_rasterdata(rasterpath, comparepath)
-                        create_cm(wc_data, osm_data, get_tileyear(rasterpath))
+                        create_cm(
+                            wc_data,
+                            osm_data,
+                            get_tileyear(rasterpath),
+                            aggregated=False,
+                        )
+                        create_cm(
+                            wc_data, osm_data, get_tileyear(rasterpath), aggregated=True
+                        )
                         del wc_data, osm_data
                     else:
                         logger.error(
@@ -395,17 +507,16 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_loss_of_nature.tif"
                     )
-                    detect_loss_of_nature(rasterpath, comparepath, resultfile)
+                    aggregated_change_osm = detect_loss_of_nature(
+                        rasterpath, comparepath, resultfile
+                    )
                 else:
                     logger.error(
                         f"Cannot find OSM Raster to be compared with {rasterpath}"
                     )
-
-            statistics = pd.concat([statistics, feat_stats], ignore_index=True)
-
-    stats_outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
-    with open(stats_outpath, "w") as file:
-        file.write(statistics.to_json())
+            if compare_wc and compare_osm:
+                # create confusion matrix with change to built-up between WC & OSM
+                create_cm(aggregated_change_wc, aggregated_change_osm, change_cm=True)
 
 
 if __name__ == "__main__":
