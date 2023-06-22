@@ -130,10 +130,50 @@ def detect_equality(rasterpath, comparepath, resultfile):
         )
     logger.info(f"Wrote binary change raster {resultfile.name}")
 
+    # aggregate classes
+    rasterdata = np.where(
+        (rasterdata == 10)
+        | (rasterdata == 20)
+        | (rasterdata == 30)
+        | (rasterdata == 40)
+        | (rasterdata == 90)
+        | (rasterdata == 95)
+        | (rasterdata == 100),
+        120,
+        rasterdata,
+    )
+    comparedata = np.where(
+        (comparedata == 10)
+        | (comparedata == 20)
+        | (comparedata == 30)
+        | (comparedata == 40)
+        | (comparedata == 90)
+        | (comparedata == 95)
+        | (comparedata == 100),
+        120,
+        comparedata,
+    )
+    binary_change_aggregated = np.isclose(
+        rasterdata, comparedata, rtol=0, atol=0, equal_nan=True
+    )
+    resultfile_aggregated = pathlib.Path(
+        f"{resultfile.parent}/{resultfile.stem}_aggregated_classes.tif"
+    )
+    with rasterio.open(rasterpath) as raster:
+        save_raster(
+            binary_change_aggregated.astype(np.uint8),
+            resultfile_aggregated,
+            raster.crs,
+            raster.transform,
+        )
+    logger.info(f"Wrote binary change raster {resultfile_aggregated.name}")
+
     # calculate statistics
     no_of_pixel = binary_change.size
     pixel_matching = binary_change.sum()
+    pixel_matching_aggregated = binary_change_aggregated.sum()
     percentage_matching = pixel_matching / no_of_pixel * 100
+    percentage_matching_aggregated = pixel_matching_aggregated / no_of_pixel * 100
     # percentage_deviation = np.invert(binary_change).sum()/no_of_pixel*100
     nan_pixel_compare = np.count_nonzero(comparedata == 999)
     completeness_percentage_compare = 100 - ((nan_pixel_compare / no_of_pixel) * 100)
@@ -144,6 +184,8 @@ def detect_equality(rasterpath, comparepath, resultfile):
         no_of_pixel,
         pixel_matching,
         percentage_matching,
+        pixel_matching_aggregated,
+        percentage_matching_aggregated,
         nan_pixel_compare,
         completeness_percentage_compare,
     )
@@ -437,7 +479,9 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         feat_stats["pixel_count"],
                         feat_stats["WC_Match_Pixel"],
                         feat_stats["WC_Match_Percent"],
-                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:3]
+                        feat_stats["WC_Match_Pixel_Agg"],
+                        feat_stats["WC_Match_Percent_Agg"],
+                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:5]
 
                     # old classes have become built up
                     resultfile = pathlib.Path(
@@ -464,11 +508,13 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                             resultdir
                             + f"{get_tilename(rasterpath)}_{tile_year}_wc_osm_binary_change.tif"
                         )
+                        results = detect_equality(rasterpath, comparepath, resultfile)
+                        feat_stats[f"osm_acc_{tile_year}"] = results[2]
                         (
-                            feat_stats[f"osm_acc_{tile_year}"],
+                            feat_stats[f"osm_acc_agg_{tile_year}"],
                             feat_stats[f"osm_nan_pixel_{tile_year}"],
                             feat_stats[f"osm_completeness_{tile_year}"],
-                        ) = detect_equality(rasterpath, comparepath, resultfile)[2:]
+                        ) = results[4:]
 
                         # create confusion matrices
                         wc_data, osm_data = get_rasterdata(rasterpath, comparepath)
@@ -502,7 +548,9 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         feat_stats["pixel_count"],
                         feat_stats["OSM_Match_Pixel"],
                         feat_stats["OSM_Match_Percent"],
-                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:3]
+                        feat_stats["OSM_Match_Pixel_Agg"],
+                        feat_stats["OSM_Match_Percent_Agg"],
+                    ) = detect_equality(rasterpath, comparepath, resultfile)[0:5]
                     # old classes have become built up
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_loss_of_nature.tif"
@@ -517,6 +565,12 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
             if compare_wc and compare_osm:
                 # create confusion matrix with change to built-up between WC & OSM
                 create_cm(aggregated_change_wc, aggregated_change_osm, change_cm=True)
+
+            statistics = pd.concat([statistics, feat_stats], ignore_index=True)
+
+    stats_outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
+    with open(stats_outpath, "w") as file:
+        file.write(statistics.to_json())
 
 
 if __name__ == "__main__":
