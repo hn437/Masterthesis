@@ -296,7 +296,7 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
     )
 
 
-def create_cm(rasterdata, comparedata, year=None, aggregated=False, change_cm=False):
+def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, change_cm=False):
     # calculate confusion matrix. First Position: actual, Second: predicted
     actual = np.nan_to_num(rasterdata.flatten(), nan=999)
     pred = np.nan_to_num(comparedata.flatten(), nan=999)
@@ -363,19 +363,19 @@ def create_cm(rasterdata, comparedata, year=None, aggregated=False, change_cm=Fa
         os.makedirs(CM_PATH)
     if aggregated:
         plt.title(
-            f"Confusion Matrix stating No. of Pixel for aggregated Classes (WC vs. OSM {year})"
+            f"Confusion Matrix stating No. of Pixel for aggregated Classes (WC vs. OSM {year}) ({tilename})"
         )
         save_path_norm = pathlib.Path(
-            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_absolut.png"
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_absolut.png"
         )
     elif change_cm:
         plt.title(
-            f"Confusion Matrix stating No. of Pixel of Classes changed to Built-Up"
+            f"Confusion Matrix stating No. of Pixel of Classes changed to Built-Up ({tilename})"
         )
-        save_path_norm = pathlib.Path(f"{CM_PATH}/Class_Change_absolut.png")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_absolut.png")
     else:
-        plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year})")
-        save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_absolut.png")
+        plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year}) ({tilename})")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_absolut.png")
     plt.savefig(save_path_norm)
 
     # calculate CM with normalized Values
@@ -392,19 +392,19 @@ def create_cm(rasterdata, comparedata, year=None, aggregated=False, change_cm=Fa
     cm_display.ax_.set(xlabel="OSM Classes", ylabel="WC Classes")
     if aggregated:
         plt.title(
-            f"Confusion Matrix stating relative Values for aggregated Classes (WC vs. OSM {year})"
+            f"Confusion Matrix stating relative Values for aggregated Classes (WC vs. OSM {year}) ({tilename})"
         )
         save_path_norm = pathlib.Path(
-            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_normalised.png"
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_normalised.png"
         )
     elif change_cm:
         plt.title(
-            f"Confusion Matrix stating relative Values of Classes changed to Built-Up"
+            f"Confusion Matrix stating relative Values of Classes changed to Built-Up ({tilename})"
         )
-        save_path_norm = pathlib.Path(f"{CM_PATH}/Class_Change_normalised.png")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_normalised.png")
     else:
-        plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year})")
-        save_path_norm = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_normalised.png")
+        plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year}) ({tilename})")
+        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_normalised.png")
     plt.savefig(save_path_norm)
 
     if change_cm:
@@ -417,12 +417,12 @@ def create_cm(rasterdata, comparedata, year=None, aggregated=False, change_cm=Fa
     cm_report = classification_report(actual, pred, zero_division=0)
     if aggregated:
         save_path_report = pathlib.Path(
-            f"{CM_PATH}/CM_WCvsOSM_aggregated_{year}_Report.txt"
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_Report.txt"
         )
     elif change_cm:
-        save_path_report = pathlib.Path(f"{CM_PATH}/Class_Change_Report.txt")
+        save_path_report = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_Report.txt")
     else:
-        save_path_report = pathlib.Path(f"{CM_PATH}/CM_WCvsOSM_{year}_Report.txt")
+        save_path_report = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_Report.txt")
     with open(save_path_report, "w") as file:
         file.write(cm_report)
 
@@ -450,7 +450,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
 
             # Take WC Raster to get extent from to create vector file and save statistics to it
             rastername_finder = (
-                f"ESA_WorldCover_10m_2021_v100_f{file_counter:03}id{index:03}_Map.tif"
+                f"ESA_WorldCover_10m_2021_v200_f{file_counter:03}id{index:03}_Map.tif"
             )
             rasterpath = pathlib.Path(wc_datapath / rastername_finder)
             with rasterio.open(rasterpath) as raster:
@@ -464,8 +464,6 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
             )
 
             if compare_wc:
-                rastername_finder = f"ESA_WorldCover_10m_2021_v100_f{file_counter:03}id{index:03}_Map.tif"
-                rasterpath = pathlib.Path(wc_datapath / rastername_finder)
                 comparepath = get_wc_to_compare(rasterpath, wc_datapath)
                 if comparepath is not None:
                     resultdir = WC_COMP_PATH
@@ -521,11 +519,13 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         create_cm(
                             wc_data,
                             osm_data,
-                            get_tileyear(rasterpath),
+                            tilename=get_tilename(rasterpath),
+                            year=get_tileyear(rasterpath),
                             aggregated=False,
                         )
                         create_cm(
-                            wc_data, osm_data, get_tileyear(rasterpath), aggregated=True
+                            wc_data, osm_data, tilename=get_tilename(rasterpath),
+                            year=get_tileyear(rasterpath), aggregated=True
                         )
                         del wc_data, osm_data
                     else:
@@ -564,7 +564,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     )
             if compare_wc and compare_osm:
                 # create confusion matrix with change to built-up between WC & OSM
-                create_cm(aggregated_change_wc, aggregated_change_osm, change_cm=True)
+                create_cm(aggregated_change_wc, aggregated_change_osm, tilename=get_osmtile(rasterpath), change_cm=True)
 
             statistics = pd.concat([statistics, feat_stats], ignore_index=True)
 
