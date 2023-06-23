@@ -182,7 +182,7 @@ def merge_tiles(
     )
     output_path = (
         dir_path
-        + f"ESA_WorldCover_10m_{str(tile.stem)[19:23]}_v100_f{file_no:03}id{feature_id:03}_{tiletype}.tif"
+        + f"ESA_WorldCover_10m_{str(tile.stem)[19:28]}_f{file_no:03}id{feature_id:03}_{tiletype}.tif"
     )
     with rio.open(output_path, "w", **output_meta) as m:
         m.write(mosaic)
