@@ -5,6 +5,10 @@ Takes Area of Interest, downloads Terradata for both years for it, downloads OSM
 As terradata is downloaded for both years and OSM script iterates over downloaded maps, 
 no need to implement processing for both years in that script again
 
+## AoI Specification
+Up to 999 Inputfiles can be specified. Each file can hold multiple Polygons. Those must 
+have an attribute 'id' with values from 0 to 999 allowed
+
 ## Filter Setting:
 ### Filter Format
 First line filters that should be used for Poly, second for line. Must not have more 
