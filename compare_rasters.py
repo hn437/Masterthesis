@@ -1,4 +1,5 @@
 import logging
+logger = logging.getLogger('__main__')
 import logging.config
 import os
 import pathlib
@@ -251,55 +252,62 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
     gdf = gpd.GeoDataFrame(
         {"old_class": classcode, "geometry": geometry}, crs="EPSG:4326"
     )
-    gdf["agg_vegetation"] = np.where(
-        (gdf["old_class"] == 10)
-        | (gdf["old_class"] == 20)
-        | (gdf["old_class"] == 30)
-        | (gdf["old_class"] == 40)
-        | (gdf["old_class"] == 90)
-        | (gdf["old_class"] == 95)
-        | (gdf["old_class"] == 100),
-        120,
-        gdf["old_class"],
-    )
-    gdf["new_class"] = int(50)
+    if len(gdf) > 0:
+        gdf["agg_vegetation"] = np.where(
+            (gdf["old_class"] == 10)
+            | (gdf["old_class"] == 20)
+            | (gdf["old_class"] == 30)
+            | (gdf["old_class"] == 40)
+            | (gdf["old_class"] == 90)
+            | (gdf["old_class"] == 95)
+            | (gdf["old_class"] == 100),
+            120,
+            gdf["old_class"],
+        )
+        gdf["new_class"] = int(50)
 
-    # reproject to utm to calculate area
-    # get example coordinate to query useable UTM projection
-    example_coords = gdf["geometry"][0].bounds
-    # query UTM code for corner coordinate
-    utm_crs_list = query_utm_crs_info(
-        datum_name="WGS 84",
-        area_of_interest=AreaOfInterest(
-            west_lon_degree=example_coords[0],
-            south_lat_degree=example_coords[1],
-            east_lon_degree=example_coords[0],
-            north_lat_degree=example_coords[1],
-        ),
-    )
-    utm_code = utm_crs_list[0].code
-    # reproject feature to queried UTM
-    gdf.to_crs(utm_code, inplace=True)
+        # reproject to utm to calculate area
+        # get example coordinate to query useable UTM projection
+        example_coords = gdf["geometry"][0].bounds
+        # query UTM code for corner coordinate
+        utm_crs_list = query_utm_crs_info(
+            datum_name="WGS 84",
+            area_of_interest=AreaOfInterest(
+                west_lon_degree=example_coords[0],
+                south_lat_degree=example_coords[1],
+                east_lon_degree=example_coords[0],
+                north_lat_degree=example_coords[1],
+            ),
+        )
+        utm_code = utm_crs_list[0].code
+        # reproject feature to queried UTM
+        gdf.to_crs(utm_code, inplace=True)
 
-    gdf["area"] = gdf.area
+        gdf["area"] = gdf.area
 
-    # reproject back to wgs 84
-    gdf.to_crs(4326, inplace=True)
+        # reproject back to wgs 84
+        gdf.to_crs(4326, inplace=True)
 
-    outputpath = pathlib.Path(f"{resultfile.parent}/{resultfile.stem}.geojson")
+        outputpath = pathlib.Path(f"{resultfile.parent}/{resultfile.stem}.geojson")
 
-    with open(outputpath, "w") as f:
-        f.write(gdf.to_json())
+        with open(outputpath, "w") as f:
+            f.write(gdf.to_json())
 
-    logger.info(
-        f"Wrote vector indicating change of class to built up called {outputpath.name}"
-    )
+        logger.info(
+            f"Wrote vector indicating change of class to built up called {outputpath.name}"
+        )
+    else:
+        logger.info(
+            f"No change of class to built up could be found so vectorfile could not be created."
+        )
 
 
 def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, change_cm=False):
     # calculate confusion matrix. First Position: actual, Second: predicted
     actual = np.nan_to_num(rasterdata.flatten(), nan=999)
+    del rasterdata
     pred = np.nan_to_num(comparedata.flatten(), nan=999)
+    del comparedata
 
     if aggregated:
         actual = np.where(
@@ -377,6 +385,8 @@ def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, cha
         plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year}) ({tilename})")
         save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_absolut.png")
     plt.savefig(save_path_norm)
+    plt.close()
+    del df_confusion_pandas
 
     # calculate CM with normalized Values
     fig, ax = plt.subplots(figsize=(20, 15))
@@ -406,6 +416,7 @@ def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, cha
         plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year}) ({tilename})")
         save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_normalised.png")
     plt.savefig(save_path_norm)
+    plt.close()
 
     if change_cm:
         logger.info(f"Wrote Confusion Matrices for Class Change to Built-up")
