@@ -1,9 +1,12 @@
 import asyncio
 import logging
+
+logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
 from typing import Coroutine, Optional
+from time import sleep
 
 import geocube.exceptions
 import geojson
@@ -18,6 +21,7 @@ from geojson import Feature, FeatureCollection
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 from shapely.geometry import box
+from shapely.validation import make_valid
 
 from config import (
     APIENDPOINT,
@@ -26,6 +30,7 @@ from config import (
     CONFICENCEDICT,
     FILTERPATH,
     LOGGCONFIG,
+    NO_OF_RETRIES,
     OSMRASTER,
     TERRADIR,
     TIME20,
@@ -61,6 +66,13 @@ def load_dict(path: str, val_type: type) -> dict:
     return d
 
 
+def fixing_geometry(geometry):
+    if not geometry.is_valid:
+        return make_valid(geometry)
+    else:
+        return geometry
+
+
 async def get_vector_areas(
     path_to_filter: pathlib.Path,
     time: str,
@@ -83,141 +95,149 @@ async def get_vector_areas(
         exit()
 
     counter = 0
-    try:
-        for line in lines:
-            osmfilter = line
-            if len(osmfilter) != 0 and osmfilter != "\n" and counter == 0:
-                filterquery = f"({osmfilter}) and geometry:polygon"
-            elif len(osmfilter) != 0 and osmfilter != "\n" and counter == 1:
-                filterquery = f"({osmfilter}) and geometry:line"
-            else:
-                counter += 1
-                continue
 
-            data = {
-                "bpolys": geojson.dumps(extent),
-                "time": time,
-                "filter": filterquery,
-                "properties": "tags",
-            }
-            # response = requests.post(APIENDPOINT, data=data)
-            async with httpx.AsyncClient(timeout=None) as client:
-                response = await client.post(APIENDPOINT, data=data)
-            response.raise_for_status()
-            if response.status_code != 200:
-                logger.error(
-                    f"Ohsome API Query for Filter {path_to_filter.stem} not successful. Status Code: {response.status_code}. {response.text}"
-                )
-                break
-            else:
-                datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
-                del response
-                if len(datapart.index) > 0:
-                    # only continue processing if features were found
-                    # set crs as it is not returned in response, but is always WGS 84
-                    datapart.set_crs(4326, inplace=True)
-                    # dropping all columns (= OSM Keys) not actively queried
-                    column_names = datapart.columns.values.tolist()[3:]
-                    confidence_keys = [key for key in confidence_dict]
-                    col_to_drop = list(set(column_names) - set(confidence_keys))
-                    datapart = datapart.drop(columns=col_to_drop)
+    for try_no in range (NO_OF_RETRIES):
+        try:
+            for line in lines:
+                osmfilter = line
+                if len(osmfilter) != 0 and osmfilter != "\n" and counter == 0:
+                    filterquery = f"({osmfilter}) and geometry:polygon"
+                elif len(osmfilter) != 0 and osmfilter != "\n" and counter == 1:
+                    filterquery = f"({osmfilter}) and geometry:line"
+                else:
+                    counter += 1
+                    continue
 
-                    # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
-                    if counter == 1:
-                        # get example coordinate to query useable UTM projection
-                        tile_corner_coords = extent["features"][0]["geometry"][
-                            "coordinates"
-                        ][0][0]
-                        # query UTM code for that coordinate
-                        utm_crs_list = query_utm_crs_info(
-                            datum_name="WGS 84",
-                            area_of_interest=AreaOfInterest(
-                                west_lon_degree=tile_corner_coords[0],
-                                south_lat_degree=tile_corner_coords[1],
-                                east_lon_degree=tile_corner_coords[0],
-                                north_lat_degree=tile_corner_coords[1],
-                            ),
-                        )
-                        utm_code = utm_crs_list[0].code
-                        # reproject feature to queried UTM
-                        datapart.to_crs(utm_code, inplace=True)
-
-                    # iterate over features to assign confidence level and buffer the lines
-                    for index in datapart.index:
-                        row = datapart.loc[[index]]
-                        # drop columns without values
-                        row = row[row.columns[~row.isnull().all()]]
-                        used_keys = row.columns.values.tolist()[3:]
-
-                        if counter == 0:
-                            # iterate over features to assign confidence level of polygons
-                            if any(
-                                i in used_keys
-                                for i in [
-                                    k for k, v in confidence_dict.items() if v == 4
-                                ]
-                            ):
-                                datapart.at[index, "confidence"] = int(4)
-                            elif any(
-                                i in used_keys
-                                for i in [
-                                    k for k, v in confidence_dict.items() if v == 2
-                                ]
-                            ):
-                                datapart.at[index, "confidence"] = int(2)
-                            else:
-                                datapart.at[index, "confidence"] = int(1)
-                        else:
-                            # iterate over features to buffer the lines
-                            buffer_dist = None
-                            for key in used_keys:
-                                # get each key, get the value for this key of this feature anc check
-                                #  if it is in the dict of buffer values.
-                                combined_key = f"{key}={row[key][index]}"
-                                if combined_key in buffer_dict:
-                                    buffer_dist = buffer_dict[combined_key]
-                                    break
-                            if buffer_dist is not None:
-                                # buffer feature. Divide by 2, as the input defines the buffer radius
-                                row["geometry"] = row.geometry.buffer(buffer_dist / 2)
-                                # reproject feature back to WGS 84 to be able to add them to polygon features
-                                row = row.to_crs(4326)
-                                # add feature to df of buffered features
-                                buffered_linefeatures = pandas.concat(
-                                    [buffered_linefeatures, row], ignore_index=True
-                                )
-
-                    if counter == 1:
-                        # if features are a line features, write confidence level 2
-                        if len(buffered_linefeatures.index) == 0:
-                            # if line features have no buffer dist specified do not add them but warn
-                            logger.warning(
-                                f"Some line features for filter '{path_to_filter.stem}' were queried, but no buffer size specified. Those features were ignored!"
-                            )
-                            continue
-                        else:
-                            datapart = buffered_linefeatures
-                            del buffered_linefeatures
-                            datapart["confidence"] = int(3)
-
-                    df_of_features = pandas.concat(
-                        [df_of_features, datapart], ignore_index=True
+                data = {
+                    "bpolys": geojson.dumps(extent),
+                    "time": time,
+                    "filter": filterquery,
+                    "properties": "tags",
+                }
+                # response = requests.post(APIENDPOINT, data=data)
+                async with httpx.AsyncClient(timeout=None) as client:
+                    response = await client.post(APIENDPOINT, data=data)
+                response.raise_for_status()
+                if response.status_code != 200:
+                    logger.error(
+                        f"Ohsome API Query for Filter {path_to_filter.stem} not successful. Status Code: {response.status_code}. {response.text}"
                     )
-                counter += 1
+                    break
+                else:
+                    datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
+                    del response
+                    if len(datapart.index) > 0:
+                        # only continue processing if features were found
+                        # set crs as it is not returned in response, but is always WGS 84
+                        datapart.set_crs(4326, inplace=True)
+                        # dropping all columns (= OSM Keys) not actively queried
+                        column_names = datapart.columns.values.tolist()[3:]
+                        confidence_keys = [key for key in confidence_dict]
+                        col_to_drop = list(set(column_names) - set(confidence_keys))
+                        datapart = datapart.drop(columns=col_to_drop)
 
-        df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
+                        # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
+                        if counter == 1:
+                            # get example coordinate to query useable UTM projection
+                            tile_corner_coords = extent["features"][0]["geometry"][
+                                "coordinates"
+                            ][0][0]
+                            # query UTM code for that coordinate
+                            utm_crs_list = query_utm_crs_info(
+                                datum_name="WGS 84",
+                                area_of_interest=AreaOfInterest(
+                                    west_lon_degree=tile_corner_coords[0],
+                                    south_lat_degree=tile_corner_coords[1],
+                                    east_lon_degree=tile_corner_coords[0],
+                                    north_lat_degree=tile_corner_coords[1],
+                                ),
+                            )
+                            utm_code = utm_crs_list[0].code
+                            # reproject feature to queried UTM
+                            datapart.to_crs(utm_code, inplace=True)
 
-        logger.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
-        return df_of_features
-    except Exception:
-        logging.exception(f"Could not query data for Filter {path_to_filter.stem}.")
-        return None
+                        # iterate over features to assign confidence level and buffer the lines
+                        for index in datapart.index:
+                            row = datapart.loc[[index]]
+                            # drop columns without values
+                            row = row[row.columns[~row.isnull().all()]]
+                            used_keys = row.columns.values.tolist()[3:]
+
+                            if counter == 0:
+                                # iterate over features to assign confidence level of polygons
+                                if any(
+                                    i in used_keys
+                                    for i in [
+                                        k for k, v in confidence_dict.items() if v == 4
+                                    ]
+                                ):
+                                    datapart.at[index, "confidence"] = int(4)
+                                elif any(
+                                    i in used_keys
+                                    for i in [
+                                        k for k, v in confidence_dict.items() if v == 2
+                                    ]
+                                ):
+                                    datapart.at[index, "confidence"] = int(2)
+                                else:
+                                    datapart.at[index, "confidence"] = int(1)
+                            else:
+                                # iterate over features to buffer the lines
+                                buffer_dist = None
+                                for key in used_keys:
+                                    # get each key, get the value for this key of this feature anc check
+                                    #  if it is in the dict of buffer values.
+                                    combined_key = f"{key}={row[key][index]}"
+                                    if combined_key in buffer_dict:
+                                        buffer_dist = buffer_dict[combined_key]
+                                        break
+                                if buffer_dist is not None:
+                                    # buffer feature. Divide by 2, as the input defines the buffer radius
+                                    row["geometry"] = row.geometry.buffer(buffer_dist / 2)
+                                    # reproject feature back to WGS 84 to be able to add them to polygon features
+                                    row = row.to_crs(4326)
+                                    # add feature to df of buffered features
+                                    buffered_linefeatures = pandas.concat(
+                                        [buffered_linefeatures, row], ignore_index=True
+                                    )
+
+                        if counter == 1:
+                            # if features are a line features, write confidence level 2
+                            if len(buffered_linefeatures.index) == 0:
+                                # if line features have no buffer dist specified do not add them but warn
+                                logger.warning(
+                                    f"Some line features for filter '{path_to_filter.stem}' were queried, but no buffer size specified. Those features were ignored!"
+                                )
+                                continue
+                            else:
+                                datapart = buffered_linefeatures
+                                del buffered_linefeatures
+                                datapart["confidence"] = int(3)
+
+                        df_of_features = pandas.concat(
+                            [df_of_features, datapart], ignore_index=True
+                        )
+                    counter += 1
+
+            df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
+
+            logger.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
+            return df_of_features
+        except Exception:
+            if try_no < NO_OF_RETRIES - 1:
+                logger.warning(f"Could not query data for Filter {path_to_filter.stem} at try No. {try_no + 1}. Retrying...")
+                # wait 10 seconds before retrying
+                sleep(15)
+                continue
+            else:
+                logging.exception(f"Could not query data for Filter {path_to_filter.stem}.")
+                return None
 
 
 async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
     """A wrapper around `gather` to limit the number of tasks executed at a time."""
     # Semaphore needs to be initiated inside the event loop
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(3)
 
     async def sem_task(task):
         async with semaphore:
@@ -227,6 +247,22 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
 
 
 def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    logger.info("Cleaning DF")
+    # drop duplicates
+    gdf_without_duplicates = input_df.drop_duplicates(ignore_index=True)
+    del input_df
+    # attempt to fix invalid geometries
+    gdf_without_duplicates.geometry = gdf_without_duplicates.geometry.apply(lambda geom: fixing_geometry(geom))
+    gdf_area = gdf_without_duplicates.explode(ignore_index=True)
+    # drop geoms != Polygons
+    polys = gdf_area[gdf_area.geom_type == 'Polygon']
+    no_polys = gdf_area[gdf_area.geom_type != 'Polygon']
+    if len(no_polys) > 0:
+        logger.warning(f"Number of Features which are not Polygons: {len(no_polys)}. Types: {set(no_polys.geom_type.to_list())}")
+
+    # check for invalid geometries
+    input_df = polys[polys.is_valid]
+
     logger.info("Attempting to resolve Overlay of Features")
     # check if overlays exist within gdf
     overlays_exist = False
@@ -250,10 +286,17 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             #  higher confidence levels (-> not overlaid by features of a higher
             #  confidence level) and this difference to the new dataframe
             df_base = input_df[input_df["confidence"] == confidence]
+            if len(df_base) == 0:
+                continue
             clip_features = input_df[input_df["confidence"] > confidence]
-            res_difference = df_base.overlay(clip_features, how="difference")
+            res_difference = df_base.overlay(clip_features, how="difference", keep_geom_type=False)
+            # explode to make polygons from multipolygons
+            res_difference_single = res_difference.explode(ignore_index=True)
+            # only use polygons, so drop line or point features which may resulted from overlay
+            res_difference_polys = res_difference_single[res_difference_single.geom_type == 'Polygon']
+
             cleaned_features = pandas.concat(
-                [cleaned_features, res_difference], ignore_index=True
+                [cleaned_features, res_difference_polys], ignore_index=True
             )
         return cleaned_features
     else:
