@@ -1,5 +1,6 @@
 import logging
-logger = logging.getLogger('__main__')
+
+logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
@@ -302,7 +303,9 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
         )
 
 
-def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, change_cm=False):
+def create_cm(
+    rasterdata, comparedata, tilename, year=None, aggregated=False, change_cm=False
+):
     # calculate confusion matrix. First Position: actual, Second: predicted
     actual = np.nan_to_num(rasterdata.flatten(), nan=999)
     del rasterdata
@@ -382,8 +385,12 @@ def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, cha
         )
         save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_absolut.png")
     else:
-        plt.title(f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year}) ({tilename})")
-        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_absolut.png")
+        plt.title(
+            f"Confusion Matrix stating No. of Pixel (WC vs. OSM {year}) ({tilename})"
+        )
+        save_path_norm = pathlib.Path(
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_absolut.png"
+        )
     plt.savefig(save_path_norm)
     plt.close()
     del df_confusion_pandas
@@ -411,10 +418,16 @@ def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, cha
         plt.title(
             f"Confusion Matrix stating relative Values of Classes changed to Built-Up ({tilename})"
         )
-        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_normalised.png")
+        save_path_norm = pathlib.Path(
+            f"{CM_PATH}/{tilename}_Class_Change_normalised.png"
+        )
     else:
-        plt.title(f"Confusion Matrix stating relative Values (WC vs. OSM {year}) ({tilename})")
-        save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_normalised.png")
+        plt.title(
+            f"Confusion Matrix stating relative Values (WC vs. OSM {year}) ({tilename})"
+        )
+        save_path_norm = pathlib.Path(
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_normalised.png"
+        )
     plt.savefig(save_path_norm)
     plt.close()
 
@@ -433,7 +446,9 @@ def create_cm(rasterdata, comparedata, tilename,year=None, aggregated=False, cha
     elif change_cm:
         save_path_report = pathlib.Path(f"{CM_PATH}/{tilename}_Class_Change_Report.txt")
     else:
-        save_path_report = pathlib.Path(f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_Report.txt")
+        save_path_report = pathlib.Path(
+            f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_Report.txt"
+        )
     with open(save_path_report, "w") as file:
         file.write(cm_report)
 
@@ -535,8 +550,11 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                             aggregated=False,
                         )
                         create_cm(
-                            wc_data, osm_data, tilename=get_tilename(rasterpath),
-                            year=get_tileyear(rasterpath), aggregated=True
+                            wc_data,
+                            osm_data,
+                            tilename=get_tilename(rasterpath),
+                            year=get_tileyear(rasterpath),
+                            aggregated=True,
                         )
                         del wc_data, osm_data
                     else:
@@ -575,7 +593,12 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                     )
             if compare_wc and compare_osm:
                 # create confusion matrix with change to built-up between WC & OSM
-                create_cm(aggregated_change_wc, aggregated_change_osm, tilename=get_osmtile(rasterpath), change_cm=True)
+                create_cm(
+                    aggregated_change_wc,
+                    aggregated_change_osm,
+                    tilename=get_osmtile(rasterpath),
+                    change_cm=True,
+                )
 
             statistics = pd.concat([statistics, feat_stats], ignore_index=True)
 
