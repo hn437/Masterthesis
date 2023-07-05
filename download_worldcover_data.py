@@ -1,9 +1,12 @@
 import logging
+
+logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
 import shutil
 import sys
+import time
 
 import geopandas as gpd
 import rasterio as rio
@@ -14,7 +17,15 @@ from rasterio.merge import merge
 from shapely.geometry import box
 from terracatalogueclient import Catalogue
 
-from config import INFILES, INPUTDIR, LOGGCONFIG, PASSWORD, TERRADIR, USERNAME
+from config import (
+    INFILES,
+    INPUTDIR,
+    LOGGCONFIG,
+    NO_OF_RETRIES,
+    PASSWORD,
+    TERRADIR,
+    USERNAME,
+)
 
 
 def import_geodata(input_dir: str, infile: str) -> gpd.GeoDataFrame:
@@ -62,17 +73,52 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             feature = gdf.loc[[index]]
             geom = feature.geometry[index]
 
-            products_2020 = catalogue.get_products(
-                "urn:eop:VITO:ESA_WorldCover_10m_2020_V1", geometry=geom
-            )
-            products_2021 = catalogue.get_products(
-                "urn:eop:VITO:ESA_WorldCover_10m_2021_V2", geometry=geom
-            )
-
             # download the products to the given directory
             logger.info(f"Started download of WorldCover data")
-            catalogue.download_products(products_2020, directory, force=True)
-            catalogue.download_products(products_2021, directory, force=True)
+            for tryno in range(NO_OF_RETRIES):
+                try:
+                    logger.info(f"Downloading for products 2020")
+                    products_2020 = catalogue.get_products(
+                        "urn:eop:VITO:ESA_WorldCover_10m_2020_V1", geometry=geom
+                    )
+                    catalogue.download_products(products_2020, directory, force=True)
+                except Exception as e:
+                    if tryno < NO_OF_RETRIES - 1:
+                        logger.warning(
+                            f"An error occured: File {infile}, Index {index}, Year 2020. Retrying to Download. Errormessage: {e}"
+                        )
+                        # wait 10 seconds before retrying
+                        time.sleep(30)
+                        continue
+                    else:
+                        logger.error(
+                            f"Unable to Download WC Data for: File {infile}, Index {index}, Year 2020. Message: {e}"
+                        )
+                        exit()
+                break
+
+            for tryno_2 in range(NO_OF_RETRIES):
+                try:
+                    logger.info(f"Downloading for products 2021")
+                    products_2021 = catalogue.get_products(
+                        "urn:eop:VITO:ESA_WorldCover_10m_2021_V2", geometry=geom
+                    )
+                    catalogue.download_products(products_2021, directory, force=True)
+                except Exception as e:
+                    if tryno_2 < NO_OF_RETRIES - 1:
+                        logger.warning(
+                            f"An error occured: File {infile}, Index {index}, Year 2021. Retrying to Download. Errormessage: {e}"
+                        )
+                        # wait 10 seconds before retrying
+                        time.sleep(30)
+                        continue
+                    else:
+                        logger.error(
+                            f"Unable to Download WC Data for: File {infile}, Index {index}, Year 2021. Message: {e}"
+                        )
+                        exit()
+                break
+
             logger.info(f"Finished download of WorldCover data")
 
             clean_terradata(directory, file_counter, index, geom)
