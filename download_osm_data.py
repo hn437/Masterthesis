@@ -5,8 +5,8 @@ logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
-from typing import Coroutine, Optional
 from time import sleep
+from typing import Coroutine, Optional
 
 import geocube.exceptions
 import geojson
@@ -96,7 +96,7 @@ async def get_vector_areas(
 
     counter = 0
 
-    for try_no in range (NO_OF_RETRIES):
+    for try_no in range(NO_OF_RETRIES):
         try:
             for line in lines:
                 osmfilter = line
@@ -124,7 +124,9 @@ async def get_vector_areas(
                     )
                     break
                 else:
-                    datapart = gpd.GeoDataFrame.from_features(response.json()["features"])
+                    datapart = gpd.GeoDataFrame.from_features(
+                        response.json()["features"]
+                    )
                     del response
                     if len(datapart.index) > 0:
                         # only continue processing if features were found
@@ -193,7 +195,9 @@ async def get_vector_areas(
                                         break
                                 if buffer_dist is not None:
                                     # buffer feature. Divide by 2, as the input defines the buffer radius
-                                    row["geometry"] = row.geometry.buffer(buffer_dist / 2)
+                                    row["geometry"] = row.geometry.buffer(
+                                        buffer_dist / 2
+                                    )
                                     # reproject feature back to WGS 84 to be able to add them to polygon features
                                     row = row.to_crs(4326)
                                     # add feature to df of buffered features
@@ -225,12 +229,16 @@ async def get_vector_areas(
             return df_of_features
         except Exception:
             if try_no < NO_OF_RETRIES - 1:
-                logger.warning(f"Could not query data for Filter {path_to_filter.stem} at try No. {try_no + 1}. Retrying...")
+                logger.warning(
+                    f"Could not query data for Filter {path_to_filter.stem} at try No. {try_no + 1}. Retrying..."
+                )
                 # wait 10 seconds before retrying
                 sleep(15)
                 continue
             else:
-                logging.exception(f"Could not query data for Filter {path_to_filter.stem}.")
+                logging.exception(
+                    f"Could not query data for Filter {path_to_filter.stem}."
+                )
                 return None
 
 
@@ -252,13 +260,17 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     gdf_without_duplicates = input_df.drop_duplicates(ignore_index=True)
     del input_df
     # attempt to fix invalid geometries
-    gdf_without_duplicates.geometry = gdf_without_duplicates.geometry.apply(lambda geom: fixing_geometry(geom))
+    gdf_without_duplicates.geometry = gdf_without_duplicates.geometry.apply(
+        lambda geom: fixing_geometry(geom)
+    )
     gdf_area = gdf_without_duplicates.explode(ignore_index=True)
     # drop geoms != Polygons
-    polys = gdf_area[gdf_area.geom_type == 'Polygon']
-    no_polys = gdf_area[gdf_area.geom_type != 'Polygon']
+    polys = gdf_area[gdf_area.geom_type == "Polygon"]
+    no_polys = gdf_area[gdf_area.geom_type != "Polygon"]
     if len(no_polys) > 0:
-        logger.warning(f"Number of Features which are not Polygons: {len(no_polys)}. Types: {set(no_polys.geom_type.to_list())}")
+        logger.warning(
+            f"Number of Features which are not Polygons: {len(no_polys)}. Types: {set(no_polys.geom_type.to_list())}"
+        )
 
     # check for invalid geometries
     input_df = polys[polys.is_valid]
@@ -289,11 +301,15 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             if len(df_base) == 0:
                 continue
             clip_features = input_df[input_df["confidence"] > confidence]
-            res_difference = df_base.overlay(clip_features, how="difference", keep_geom_type=False)
+            res_difference = df_base.overlay(
+                clip_features, how="difference", keep_geom_type=False
+            )
             # explode to make polygons from multipolygons
             res_difference_single = res_difference.explode(ignore_index=True)
             # only use polygons, so drop line or point features which may resulted from overlay
-            res_difference_polys = res_difference_single[res_difference_single.geom_type == 'Polygon']
+            res_difference_polys = res_difference_single[
+                res_difference_single.geom_type == "Polygon"
+            ]
 
             cleaned_features = pandas.concat(
                 [cleaned_features, res_difference_polys], ignore_index=True
