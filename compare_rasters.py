@@ -177,6 +177,12 @@ def detect_equality(rasterpath, comparepath, resultfile):
     # percentage_deviation = np.invert(binary_change).sum()/no_of_pixel*100
     nan_pixel_compare = np.count_nonzero(comparedata == 999)
     completeness_percentage_compare = 100 - ((nan_pixel_compare / no_of_pixel) * 100)
+    percentage_matching_no_nan = (
+        pixel_matching / (no_of_pixel - nan_pixel_compare) * 100
+    )
+    percentage_matching_aggregated_no_nan = (
+        pixel_matching_aggregated / (no_of_pixel - nan_pixel_compare) * 100
+    )
 
     del rasterdata, comparedata, binary_change
 
@@ -188,6 +194,8 @@ def detect_equality(rasterpath, comparepath, resultfile):
         percentage_matching_aggregated,
         nan_pixel_compare,
         completeness_percentage_compare,
+        percentage_matching_no_nan,
+        percentage_matching_aggregated_no_nan,
     )
 
 
@@ -532,11 +540,13 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         )
                         results = detect_equality(rasterpath, comparepath, resultfile)
                         feat_stats[f"osm_acc_{tile_year}"] = results[2]
+                        feat_stats[f"osm_acc_{tile_year}_no_nan"] = results[7]
+                        feat_stats[f"osm_acc_agg_{tile_year}"] = results[4]
+                        feat_stats[f"osm_acc_agg_{tile_year}_no_nan"] = results[8]
                         (
-                            feat_stats[f"osm_acc_agg_{tile_year}"],
                             feat_stats[f"osm_nan_pixel_{tile_year}"],
                             feat_stats[f"osm_completeness_{tile_year}"],
-                        ) = results[4:]
+                        ) = results[5:7]
 
                         # create confusion matrices
                         wc_data, osm_data = get_rasterdata(rasterpath, comparepath)
