@@ -1,7 +1,5 @@
 import asyncio
 import logging
-
-logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
@@ -81,7 +79,7 @@ async def get_vector_areas(
     buffer_dict: dict,
     class_codes: dict,
 ) -> Optional[gpd.GeoDataFrame]:
-    logger.info(f"Querying OSM Data for Filter {path_to_filter.stem}")
+    logging.info(f"Querying OSM Data for Filter {path_to_filter.stem}")
 
     df_of_features = gpd.GeoDataFrame()
     buffered_linefeatures = gpd.GeoDataFrame()
@@ -89,7 +87,7 @@ async def get_vector_areas(
     with open(path_to_filter) as f:
         lines = f.readlines()
     if len(lines) < 1:
-        logger.critical(
+        logging.critical(
             f"Filter {path_to_filter.stem} empty! Fix Filter before attempting to download OSM data"
         )
         exit()
@@ -119,7 +117,7 @@ async def get_vector_areas(
                     response = await client.post(APIENDPOINT, data=data)
                 response.raise_for_status()
                 if response.status_code != 200:
-                    logger.error(
+                    logging.error(
                         f"Ohsome API Query for Filter {path_to_filter.stem} not successful. Status Code: {response.status_code}. {response.text}"
                     )
                     break
@@ -209,7 +207,7 @@ async def get_vector_areas(
                             # if features are a line features, write confidence level 2
                             if len(buffered_linefeatures.index) == 0:
                                 # if line features have no buffer dist specified do not add them but warn
-                                logger.warning(
+                                logging.warning(
                                     f"Some line features for filter '{path_to_filter.stem}' were queried, but no buffer size specified. Those features were ignored!"
                                 )
                                 continue
@@ -225,11 +223,11 @@ async def get_vector_areas(
 
             df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
 
-            logger.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
+            logging.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
             return df_of_features
         except Exception:
             if try_no < NO_OF_RETRIES - 1:
-                logger.warning(
+                logging.warning(
                     f"Could not query data for Filter {path_to_filter.stem} at try No. {try_no + 1}. Retrying..."
                 )
                 # wait 10 seconds before retrying
@@ -255,7 +253,7 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
 
 
 def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    logger.info("Cleaning DF")
+    logging.info("Cleaning DF")
     # drop duplicates
     gdf_without_duplicates = input_df.drop_duplicates(ignore_index=True)
     del input_df
@@ -268,14 +266,14 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     polys = gdf_area[gdf_area.geom_type == "Polygon"]
     no_polys = gdf_area[gdf_area.geom_type != "Polygon"]
     if len(no_polys) > 0:
-        logger.warning(
+        logging.warning(
             f"Number of Features which are not Polygons: {len(no_polys)}. Types: {set(no_polys.geom_type.to_list())}"
         )
 
     # check for invalid geometries
     input_df = polys[polys.is_valid]
 
-    logger.info("Attempting to resolve Overlay of Features")
+    logging.info("Attempting to resolve Overlay of Features")
     # check if overlays exist within gdf
     overlays_exist = False
     for index, row in input_df.iterrows():
@@ -326,7 +324,7 @@ async def query_osm_data(
     class_codes: dict,
     time: str,
 ) -> Optional[gpd.GeoDataFrame]:
-    logger.info("Querying OSM Data")
+    logging.info("Querying OSM Data")
     # create task list, getting all vector features for each filter
     tasks = []
     for filter_class in pathlib.Path(FILTERPATH).rglob("*.txt"):
@@ -340,17 +338,17 @@ async def query_osm_data(
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
     # create empty gdf to collect all features
     if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
-        logger.error(f"Cannot Process Vector DataFrames due to Errors")
+        logging.error(f"Cannot Process Vector DataFrames due to Errors")
         for index, element in enumerate(tasks_results):
             if not isinstance(element, gpd.GeoDataFrame):
-                logger.error(
+                logging.error(
                     f"Cannot process vector layers. Critical Element index: {index}. {element}"
                 )
         return None
     else:
         # drop empty GeoDataFrames
         tasks_results = [df for df in tasks_results if not df.empty]
-        logger.info(
+        logging.info(
             f"Successfully queried OSM Data and got Features for {len(tasks_results)} Classes"
         )
         all_vector_data = gpd.GeoDataFrame(
@@ -366,7 +364,7 @@ async def query_osm_data(
 
             return all_vector_data
         else:
-            logger.warning(f"No OSM Data was found!")
+            logging.warning(f"No OSM Data was found!")
             return None
 
 
@@ -385,7 +383,7 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
             os.makedirs(OSMRASTER)
         osm_raster.rio.to_raster(osm_raster_path)
     except geocube.exceptions.VectorDataError:
-        logger.error(f"Cannot create Rastertile {rastertile.name} in year {time}.")
+        logging.error(f"Cannot create Rastertile {rastertile.name} in year {time}.")
 
     del wc_data
 
@@ -395,10 +393,10 @@ async def main():
     confidence_dict = load_dict(CONFICENCEDICT, int)
     buffer_dict = load_dict(BUFFERSIZES, float)
     class_codes = load_dict(CLASSCODES, int)
-    logger.info(f"Successfully loaded info dicts")
+    logging.info(f"Successfully loaded info dicts")
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
-        logger.info(f"Started with {rastertile.name}")
+        logging.info(f"Started with {rastertile.name}")
         # Get the year represented by the rasterfile and set Ohsome download date accordingly
         year = get_tileyear(rastertile)
         if year == "2020":
@@ -406,7 +404,7 @@ async def main():
         elif year == "2021":
             time = TIME21
         else:
-            logger.warning(
+            logging.warning(
                 f"Could not derive year for rasterfile {rastertile.name}. Cannot process this raster!"
             )
             continue
@@ -421,9 +419,9 @@ async def main():
             # convert vector data in raster data and save it
             write_as_raster(osm_data, rastertile, year)
             # TODO: Einfach keins, wie im moment?
-            logger.info(f"Finished with {rastertile.name}")
+            logging.info(f"Finished with {rastertile.name}")
         else:
-            logger.warning(
+            logging.warning(
                 f"No OSM Data could be queried for Rastertile {rastertile.name} in year {time}\n"
             )
 
@@ -437,6 +435,5 @@ if __name__ == "__main__":
     with open(LOGGCONFIG, "r") as f:
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
-    logger = logging.getLogger(__name__)
 
     asyncio.run(main())

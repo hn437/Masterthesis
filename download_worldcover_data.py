@@ -1,6 +1,4 @@
 import logging
-
-logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
@@ -50,7 +48,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             if filename.endswith(".geojson"):
                 INFILES.append(filename)
     if len(INFILES) > 999:
-        logger.error("Too many Files stated for Input. Max 999 Files allowed")
+        logging.error("Too many Files stated for Input. Max 999 Files allowed")
         sys.exit(1)
 
     if not os.path.exists(directory):
@@ -58,40 +56,40 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
     file_counter = 0
     for infile in INFILES:
-        logger.info(f"Working on Inputfile {file_counter +1} of {len(INFILES)}")
+        logging.info(f"Working on Inputfile {file_counter +1} of {len(INFILES)}")
         # import geodata of extent to be imported from WorldCover
         gdf = import_geodata(INPUTDIR, infile)
 
         if len(gdf.index) > 999:
-            logger.error(
+            logging.error(
                 f"Too many Features in File {infile}. Max 999 Features allowed"
             )
             continue
 
         for index in gdf.index:
-            logger.info(f"Working on feature {index+1} of {len(gdf)}")
+            logging.info(f"Working on feature {index+1} of {len(gdf)}")
             feature = gdf.loc[[index]]
             geom = feature.geometry[index]
 
             # download the products to the given directory
-            logger.info(f"Started download of WorldCover data")
+            logging.info(f"Started download of WorldCover data")
             for tryno in range(NO_OF_RETRIES):
                 try:
-                    logger.info(f"Downloading for products 2020")
+                    logging.info(f"Downloading for products 2020")
                     products_2020 = catalogue.get_products(
                         "urn:eop:VITO:ESA_WorldCover_10m_2020_V1", geometry=geom
                     )
                     catalogue.download_products(products_2020, directory, force=True)
                 except Exception as e:
                     if tryno < NO_OF_RETRIES - 1:
-                        logger.warning(
+                        logging.warning(
                             f"An error occured: File {infile}, Index {index}, Year 2020. Retrying to Download. Errormessage: {e}"
                         )
                         # wait 10 seconds before retrying
                         time.sleep(30)
                         continue
                     else:
-                        logger.error(
+                        logging.error(
                             f"Unable to Download WC Data for: File {infile}, Index {index}, Year 2020. Message: {e}"
                         )
                         exit()
@@ -99,27 +97,27 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
             for tryno_2 in range(NO_OF_RETRIES):
                 try:
-                    logger.info(f"Downloading for products 2021")
+                    logging.info(f"Downloading for products 2021")
                     products_2021 = catalogue.get_products(
                         "urn:eop:VITO:ESA_WorldCover_10m_2021_V2", geometry=geom
                     )
                     catalogue.download_products(products_2021, directory, force=True)
                 except Exception as e:
                     if tryno_2 < NO_OF_RETRIES - 1:
-                        logger.warning(
+                        logging.warning(
                             f"An error occured: File {infile}, Index {index}, Year 2021. Retrying to Download. Errormessage: {e}"
                         )
                         # wait 10 seconds before retrying
                         time.sleep(30)
                         continue
                     else:
-                        logger.error(
+                        logging.error(
                             f"Unable to Download WC Data for: File {infile}, Index {index}, Year 2021. Message: {e}"
                         )
                         exit()
                 break
 
-            logger.info(f"Finished download of WorldCover data")
+            logging.info(f"Finished download of WorldCover data")
 
             clean_terradata(directory, file_counter, index, geom)
 
@@ -127,7 +125,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
 
     # remove scratch dir
     shutil.rmtree(directory)
-    logger.info(f"Finished downloading WorldCover Data for all Files and Features\n\n")
+    logging.info(f"Finished downloading WorldCover Data for all Files and Features\n\n")
 
 
 def clean_terradata(
@@ -144,12 +142,12 @@ def clean_terradata(
         os.makedirs(quality_dir)
 
     # clip all raster
-    logger.info(f"Clipping WorldCover Data to Feature Extent")
+    logging.info(f"Clipping WorldCover Data to Feature Extent")
     clip_all_downloads(scratch_dir, feature_geom)
 
     # check if AoI overlays multiple WorldCover Tiles
     if len(list(scratch_dir.rglob("*2020*_Map.tif"))) > 1:
-        logger.info(f"Merging WorldCover Data and saving it")
+        logging.info(f"Merging WorldCover Data and saving it")
         # make lists of files olding Maps or Data Quality per year
         maps_20 = list(scratch_dir.rglob("*2020*_Map.tif"))
         maps_21 = list(scratch_dir.rglob("*2021*_Map.tif"))
@@ -163,7 +161,7 @@ def clean_terradata(
         merge_tiles(quality_21, quality_dir, "InputQuality", 1, feature_id)
 
     else:
-        logger.info(f"Saving WorldCover Data")
+        logging.info(f"Saving WorldCover Data")
         # AoI within a single raster tile -> no merging, but renaming and moving to dir
         for file in scratch_dir.rglob("*_Map.tif"):
             new_name = f"ESA_WorldCover_10m_{str(file.stem)[19:29]}f{file_no:03}id{feature_id:03}_Map.tif"
@@ -252,6 +250,5 @@ if __name__ == "__main__":
     with open(LOGGCONFIG, "r") as f:
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
-    logger = logging.getLogger(__name__)
 
     main()

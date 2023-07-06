@@ -1,6 +1,4 @@
 import logging
-
-logger = logging.getLogger("__main__")
 import logging.config
 import os
 import pathlib
@@ -65,7 +63,7 @@ def get_wc_to_compare(raster, datapath):
         tile = get_tilename(file)
         if year == "2020" and tile == get_tilename(raster):
             return file
-    logger.warning(
+    logging.warning(
         f"Could not find corresponding WorldCover Raster for WC File {raster}. Cannot compare WC Data"
     )
     return None
@@ -77,7 +75,7 @@ def get_other_to_compare(raster, datapath):
         tile = get_tilename(raster)
         if year == get_osmyear(file) and tile == get_osmtile(file):
             return file
-    logger.warning(
+    logging.warning(
         f"Could not find corresponding OSM Raster for WC File {raster}. Cannot compare Data between OSM and WC"
     )
     return None
@@ -89,7 +87,7 @@ def get_osm_to_compare(raster, datapath):
         tile = get_osmtile(file)
         if year == "2020" and tile == get_osmtile(raster):
             return file
-    logger.warning(
+    logging.warning(
         f"Could not find corresponding OSM Raster for OSM File {raster}. Cannot compare OSM Data"
     )
     return None
@@ -130,7 +128,7 @@ def detect_equality(rasterpath, comparepath, resultfile):
         save_raster(
             binary_change.astype(np.uint8), resultfile, raster.crs, raster.transform
         )
-    logger.info(f"Wrote binary change raster {resultfile.name}")
+    logging.info(f"Wrote binary change raster {resultfile.name}")
 
     # aggregate classes
     rasterdata = np.where(
@@ -168,7 +166,7 @@ def detect_equality(rasterpath, comparepath, resultfile):
             raster.crs,
             raster.transform,
         )
-    logger.info(f"Wrote binary change raster {resultfile_aggregated.name}")
+    logging.info(f"Wrote binary change raster {resultfile_aggregated.name}")
 
     # calculate statistics
     no_of_pixel = binary_change.size
@@ -206,7 +204,7 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     outputdata = np.where((rasterdata == 50) & (comparedata != 50), comparedata, 0)
     with rasterio.open(rasterpath) as raster:
         save_raster(outputdata, resultfile, raster.crs, raster.transform)
-    logger.info(
+    logging.info(
         f"Wrote raster indicating change of class to built up called {resultfile.name}"
     )
     # write as vector
@@ -228,7 +226,7 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     )
     with rasterio.open(rasterpath) as raster:
         save_raster(aggregated_data, aggregated_outpath, raster.crs, raster.transform)
-    logger.info(
+    logging.info(
         f"Wrote raster indicating change of class to built up with aggregated nature class"
     )
 
@@ -294,11 +292,11 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
         with open(outputpath, "w") as f:
             f.write(gdf.to_json())
 
-        logger.info(
+        logging.info(
             f"Wrote vector indicating change of class to built up called {outputpath.name}"
         )
     else:
-        logger.info(
+        logging.info(
             f"No change of class to built up could be found so vectorfile could not be created."
         )
 
@@ -432,9 +430,9 @@ def create_cm(
     plt.close()
 
     if change_cm:
-        logger.info(f"Wrote Confusion Matrices for Class Change to Built-up")
+        logging.info(f"Wrote Confusion Matrices for Class Change to Built-up")
     else:
-        logger.info(
+        logging.info(
             f"Wrote Confusion Matrices for year {year}, aggregation={aggregated}"
         )
 
@@ -467,12 +465,12 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
 
     file_counter = 0
     for infile in INFILES:
-        logger.info(f"Working on Inputfile {file_counter + 1} of {len(INFILES)}")
+        logging.info(f"Working on Inputfile {file_counter + 1} of {len(INFILES)}")
         # import geodata of extent to be imported from WorldCover
         gdf = import_geodata(INPUTDIR, infile)
 
         for index in gdf.index:
-            logger.info(f"Working on Feature {index+1} of {len(gdf)}")
+            logging.info(f"Working on Feature {index+1} of {len(gdf)}")
 
             # Take WC Raster to get extent from to create vector file and save statistics to it
             rastername_finder = (
@@ -515,7 +513,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         rasterpath, comparepath, resultfile
                     )
                 else:
-                    logger.error(
+                    logging.error(
                         f"Cannot find WC Raster to be compared with {rasterpath}"
                     )
             if compare_wc_osm:
@@ -558,7 +556,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         )
                         del wc_data, osm_data
                     else:
-                        logger.error(
+                        logging.error(
                             f"Cannot find OSM Raster to be compared with WC Raster {rasterpath}"
                         )
             if compare_osm:
@@ -588,7 +586,7 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                         rasterpath, comparepath, resultfile
                     )
                 else:
-                    logger.error(
+                    logging.error(
                         f"Cannot find OSM Raster to be compared with {rasterpath}"
                     )
             if compare_wc and compare_osm:
@@ -612,7 +610,6 @@ if __name__ == "__main__":
     with open(LOGGCONFIG, "r") as f:
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
-    logger = logging.getLogger(__name__)
 
     main(compare_wc=True, compare_wc_osm=True, compare_osm=True)
 
