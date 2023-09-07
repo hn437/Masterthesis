@@ -43,7 +43,7 @@ def get_tileyear(file: pathlib.Path) -> str:
 def get_tilename(file: pathlib.Path) -> str:
     name = file.stem[-13:-4]
     file_no = int(file.stem[-12:-9])
-    feature = int(file.stem[-7:-4])  # TODO: check if actually used
+    feature = int(file.stem[-7:-4])
     return name
 
 
@@ -459,7 +459,79 @@ def create_cm(
         file.write(cm_report)
 
 
-def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
+def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm):
+    tilename = get_tilename(rasterpath_wc)
+    rasterdata_wc, comparedata_wc = get_rasterdata(rasterpath_wc, comparepath_wc)
+    rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
+    del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+
+    # write 0 where class built-up was already present or is not present in newer dataset
+    # write 1 where change to built-up happened
+    changedata_wc = np.where(
+        (rasterdata_wc == 50) & (comparedata_wc != 50), "Yes", "No"
+    )
+    del rasterdata_wc, comparedata_wc
+    changedata_osm = np.where(
+        (rasterdata_osm == 50) & (comparedata_osm != 50), "Yes", "No"
+    )
+    del rasterdata_osm, comparedata_osm
+
+    changedata_wc_masked = np.ma.masked_where(
+        np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_wc
+    )
+    changedata_osm_masked = np.ma.masked_where(
+        np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_osm
+    )
+    del changedata_wc, changedata_osm
+
+    actual = np.nan_to_num(changedata_wc_masked.flatten(), nan=999)
+    pred = np.nan_to_num(changedata_osm_masked.flatten(), nan=999)
+    del changedata_wc_masked, changedata_osm_masked
+
+    # create confusion Matrix using No. of Pixel
+    df_confusion_pandas = pd.crosstab(
+        actual, pred, rownames=["WC Change"], colnames=["OSM Change"]
+    )
+    del actual, pred
+
+    # create CM Plot
+    fig, ax = plt.subplots(figsize=(20, 15))
+    cm_map = sns.heatmap(
+        df_confusion_pandas,
+        annot=True,
+        fmt="",
+        robust=True,
+        annot_kws={"fontsize": 9},
+        square=True,
+        ax=ax,
+        cmap="Blues",
+    )
+    ax.set_xlabel("OSM Change", labelpad=10)
+    ax.set_ylabel("WC Change", labelpad=10)
+    border_linewidth = 1
+    for _, spine in cm_map.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(border_linewidth)
+    if not os.path.exists(CM_PATH):
+        os.makedirs(CM_PATH)
+    plt.title(
+        f"Confusion Matrix stating if Change to Built-Up is in Accordance in both Datasets ({tilename})"
+    )
+    save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_compare_change_area.png")
+    plt.savefig(save_path_norm)
+    plt.close()
+
+    # calculate accordance. In Percent, how many Pixel with change to built up in WC are
+    #  also change to built up in OSM
+    accordance = (
+        df_confusion_pandas.values[1][1] / df_confusion_pandas.values[1][0] * 100
+    )
+    del df_confusion_pandas
+
+    return accordance
+
+
+def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True):
     wc_datapath = pathlib.Path(TERRADIR + "Maps/")
     osm_datapath = pathlib.Path(OSMRASTER)
 
@@ -495,6 +567,17 @@ def main(compare_wc=True, compare_wc_osm=True, compare_osm=True):
                 index=[0],
             )
 
+            if compare_change:
+                rasterpath_wc = rasterpath
+                comparepath_wc = get_wc_to_compare(rasterpath, wc_datapath)
+                rastername_finder = f"f{file_counter:03}id{index:03}_2021.tif"
+                rasterpath = pathlib.Path(osm_datapath / rastername_finder)
+                rasterpath_osm = rasterpath
+                comparepath_osm = get_osm_to_compare(rasterpath, osm_datapath)
+                rasterpath = rasterpath_wc
+                feat_stats["change_accordance"] = compare_change_area(
+                    rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+                )
             if compare_wc:
                 comparepath = get_wc_to_compare(rasterpath, wc_datapath)
                 if comparepath is not None:
@@ -621,7 +704,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
 
-    main(compare_wc=True, compare_wc_osm=True, compare_osm=True)
+    main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True)
 
     # TODO:
     #  add logging
