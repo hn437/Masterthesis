@@ -235,7 +235,7 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     with rasterio.open(rasterpath) as raster:
         save_raster(aggregated_data, aggregated_outpath, raster.crs, raster.transform)
     logging.info(
-        f"Wrote raster indicating change of class to built up with aggregated nature class"
+        "Wrote raster indicating change of class to built up with aggregated nature class"
     )
 
     del rasterdata, comparedata, outputdata
@@ -305,7 +305,7 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
         )
     else:
         logging.info(
-            f"No change of class to built up could be found so vectorfile could not be created."
+            "No change of class to built up could be found so vectorfile could not be created."
         )
 
 
@@ -438,7 +438,7 @@ def create_cm(
     plt.close()
 
     if change_cm:
-        logging.info(f"Wrote Confusion Matrices for Class Change to Built-up")
+        logging.info("Wrote Confusion Matrices for Class Change to Built-up")
     else:
         logging.info(
             f"Wrote Confusion Matrices for year {year}, aggregation={aggregated}"
@@ -524,7 +524,9 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     # calculate accordance. In Percent, how many Pixel with change to built up in WC are
     #  also change to built up in OSM
     accordance = (
-        df_confusion_pandas.values[1][1] / df_confusion_pandas.values[1][0] * 100
+        df_confusion_pandas.values[1][1]
+        / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
+        * 100
     )
     del df_confusion_pandas
 
