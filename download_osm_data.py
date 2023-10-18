@@ -338,7 +338,7 @@ async def query_osm_data(
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
     # create empty gdf to collect all features
     if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
-        logging.error(f"Cannot Process Vector DataFrames due to Errors")
+        logging.error("Cannot Process Vector DataFrames due to Errors")
         for index, element in enumerate(tasks_results):
             if not isinstance(element, gpd.GeoDataFrame):
                 logging.error(
@@ -364,13 +364,13 @@ async def query_osm_data(
 
             return all_vector_data
         else:
-            logging.warning(f"No OSM Data was found!")
+            logging.warning("No OSM Data was found!")
             return None
 
 
 def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -> None:
     # get WorldCover raster to make new raster with same properties
-    logging.info(f"Attempting to write Raster from Vector Features")
+    logging.info("Attempting to write Raster from Vector Features")
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
         osm_raster = make_geocube(
@@ -393,7 +393,7 @@ async def main():
     confidence_dict = load_dict(CONFICENCEDICT, int)
     buffer_dict = load_dict(BUFFERSIZES, float)
     class_codes = load_dict(CLASSCODES, int)
-    logging.info(f"Successfully loaded info dicts")
+    logging.info("Successfully loaded info dicts")
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
         logging.info(f"Started with {rastertile.name}")
