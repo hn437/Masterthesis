@@ -69,7 +69,8 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
         for index in gdf.index:
             logging.info(f"Working on feature {index+1} of {len(gdf)}")
             feature = gdf.loc[[index]]
-            geom = feature.geometry[index]
+            bounds = feature.geometry[index].bounds
+            geom = box(*bounds)
 
             # download the products to the given directory
             logging.info("Started download of WorldCover data")
