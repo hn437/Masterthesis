@@ -523,11 +523,19 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
 
     # calculate accordance. In Percent, how many Pixel with change to built up in WC are
     #  also change to built up in OSM
-    accordance = (
-        df_confusion_pandas.values[1][1]
-        / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
-        * 100
-    )
+    try:
+        accordance = (
+            df_confusion_pandas.values[1][1]
+            / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
+            * 100
+        )
+    except:
+        if df_confusion_pandas.axes[0][0] == 'Yes' and df_confusion_pandas.axes[1][0] == 'No':
+            accordance = 0
+        elif df_confusion_pandas.axes[0][0] == 'Yes' and df_confusion_pandas.axes[1][0] == 'Yes':
+            accordance = 100
+        else:
+            logging.error(f"Could not calculate accordance for tile {tilename}")
     del df_confusion_pandas
 
     return accordance
@@ -568,6 +576,12 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 crs="EPSG:4326",
                 index=[0],
             )
+
+            # add attributes for feature from input file except do not overwrite geometry
+            for i in range(len(gdf.loc[[index]].axes[1])):
+                attr = gdf.loc[[index]].axes[1][i]
+                if attr != 'geometry':
+                    feat_stats[attr] = gdf.loc[[index]][attr][index]
 
             if compare_change:
                 rasterpath_wc = rasterpath
