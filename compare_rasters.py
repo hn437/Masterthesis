@@ -17,7 +17,6 @@ from shapely.geometry import box, shape
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     classification_report,
-    confusion_matrix,
 )
 
 from config import (
@@ -42,8 +41,8 @@ def get_tileyear(file: pathlib.Path) -> str:
 
 def get_tilename(file: pathlib.Path) -> str:
     name = file.stem[-13:-4]
-    file_no = int(file.stem[-12:-9])
-    feature = int(file.stem[-7:-4])
+    int(file.stem[-12:-9])
+    int(file.stem[-7:-4])
     return name
 
 
@@ -465,8 +464,8 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
     del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
 
-    # write 0 where class built-up was already present or is not present in newer dataset
-    # write 1 where change to built-up happened
+    # write No where class built-up was already present or is not present in newer dataset
+    # write Yes where change to built-up happened
     changedata_wc = np.where(
         (rasterdata_wc == 50) & (comparedata_wc != 50), "Yes", "No"
     )
@@ -530,15 +529,32 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
             * 100
         )
     except:
-        if df_confusion_pandas.axes[0][0] == 'Yes' and df_confusion_pandas.axes[1][0] == 'No':
+        if (
+            df_confusion_pandas.axes[0][0] == "Yes"
+            and df_confusion_pandas.axes[1][0] == "No"
+        ):
             accordance = 0
-        elif df_confusion_pandas.axes[0][0] == 'Yes' and df_confusion_pandas.axes[1][0] == 'Yes':
+        elif (
+            df_confusion_pandas.axes[0][0] == "Yes"
+            and df_confusion_pandas.axes[1][0] == "Yes"
+        ):
             accordance = 100
         else:
             logging.error(f"Could not calculate accordance for tile {tilename}")
+    try:
+        wc_pixel_no_to_built = (
+            df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1]
+        )
+        osm_pixel_no_to_built = (
+            df_confusion_pandas.values[0][1] + df_confusion_pandas.values[1][1]
+        )
+    except:
+        logging.error(
+            f"Could not calculate number of pixels changed to built up for tile {tilename}"
+        )
     del df_confusion_pandas
 
-    return accordance
+    return accordance, wc_pixel_no_to_built, osm_pixel_no_to_built
 
 
 def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True):
@@ -580,7 +596,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
             # add attributes for feature from input file except do not overwrite geometry
             for i in range(len(gdf.loc[[index]].axes[1])):
                 attr = gdf.loc[[index]].axes[1][i]
-                if attr != 'geometry':
+                if attr != "geometry":
                     feat_stats[attr] = gdf.loc[[index]][attr][index]
 
             if compare_change:
@@ -591,7 +607,11 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 rasterpath_osm = rasterpath
                 comparepath_osm = get_osm_to_compare(rasterpath, osm_datapath)
                 rasterpath = rasterpath_wc
-                feat_stats["change_accordance"] = compare_change_area(
+                (
+                    feat_stats["change_accordance"],
+                    feat_stats["wc_pixel_no_to_built"],
+                    feat_stats["osm_pixel_no_to_built"],
+                ) = compare_change_area(
                     rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
                 )
             if compare_wc:
