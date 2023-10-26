@@ -473,6 +473,12 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     changedata_osm = np.where(
         (rasterdata_osm == 50) & (comparedata_osm != 50), "Yes", "No"
     )
+
+    # also get a file which has Yes wherever WC changed to built up and OSM is built up
+    #  in newer file
+    wc_changed_built = np.where(
+        (changedata_wc == 'Yes') & (comparedata_osm != 50), "Yes", "No"
+    )
     del rasterdata_osm, comparedata_osm
 
     changedata_wc_masked = np.ma.masked_where(
@@ -481,17 +487,26 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     changedata_osm_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_osm
     )
-    del changedata_wc, changedata_osm
+    wc_changed_built_masked = np.ma.masked_where(
+        np.logical_and(changedata_wc == "No", changedata_osm == "No"), wc_changed_built
+    )
+    del changedata_wc, changedata_osm, wc_changed_built
 
     actual = np.nan_to_num(changedata_wc_masked.flatten(), nan=999)
     pred = np.nan_to_num(changedata_osm_masked.flatten(), nan=999)
-    del changedata_wc_masked, changedata_osm_masked
+    pred_2 = np.nan_to_num(wc_changed_built_masked.flatten(), nan=999)
+    del changedata_wc_masked, changedata_osm_masked, wc_changed_built_masked
 
     # create confusion Matrix using No. of Pixel
     df_confusion_pandas = pd.crosstab(
         actual, pred, rownames=["WC Change"], colnames=["OSM Change"]
     )
-    del actual, pred
+    del pred
+
+    df_confusion_pandas_2 = pd.crosstab(
+        actual, pred_2, rownames=["WC Change"], colnames=["OSM Built Up"]
+    )
+    del actual, pred_2
 
     # create CM Plot
     fig, ax = plt.subplots(figsize=(20, 15))
@@ -528,6 +543,11 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
             / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
             * 100
         )
+        accordance_2 = (
+            df_confusion_pandas_2.values[1][1]
+            / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
+            * 100
+        )
     except:
         if (
             df_confusion_pandas.axes[0][0] == "Yes"
@@ -552,9 +572,9 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
         logging.error(
             f"Could not calculate number of pixels changed to built up for tile {tilename}"
         )
-    del df_confusion_pandas
+    del df_confusion_pandas, df_confusion_pandas_2
 
-    return accordance, wc_pixel_no_to_built, osm_pixel_no_to_built
+    return accordance, accordance_2, wc_pixel_no_to_built, osm_pixel_no_to_built
 
 
 def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True):
@@ -609,6 +629,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 rasterpath = rasterpath_wc
                 (
                     feat_stats["change_accordance"],
+                    feat_stats["change_accordance_2"],
                     feat_stats["wc_pixel_no_to_built"],
                     feat_stats["osm_pixel_no_to_built"],
                 ) = compare_change_area(
