@@ -1,3 +1,4 @@
+aeroway=runway,50
 barrier=hedge,1
 cycleway=track,2.3
 highway=living_street,5
