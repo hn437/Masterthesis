@@ -3,6 +3,7 @@ import logging.config
 import os
 import pathlib
 from scipy import stats
+#from scipy.stats import shapiro
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -22,7 +23,15 @@ def calculate_with_nominal(continuous_data, nominal_data):
 
 
 def calculate_with_scalar(accordance, continuous_data):
-    return stats.pearsonr(accordance, continuous_data)
+    # check for Gaussian Distribution with Shapiro-Wilk Test
+    statistic, p = stats.shapiro(continuous_data)
+    if p > 0.05:
+        correlation = stats.pearsonr(accordance, continuous_data)
+        corr_type = 'Pearson Correlation'
+    else:
+        correlation = stats.spearmanr(accordance, continuous_data)
+        corr_type = 'Spearman Correlation'
+    return correlation, corr_type
 
 
 def calculate_correlation(df):
@@ -30,20 +39,25 @@ def calculate_correlation(df):
     names = []
     correlations = []
     p_values = []
+    corr_test_type = []
 
     for column in (['University']):
         correlation, p_value = calculate_with_nominal(accordance, df[column])
         names.append(column)
         correlations.append(correlation)
         p_values.append(p_value)
+        corr_test_type.append('point biserial correlation')
 
-    for column in ([]):
-        correlation, p_value = calculate_with_scalar(accordance, df[column])
+    for column in (['Population', 'X-Coordinate', 'Y-Coordinate', 'Verfügbares Einkommen']):
+        result = calculate_with_scalar(accordance, df[column])
+        correlation, p_value = result[0]
+        corr_type = result[1]
         names.append(column)
         correlations.append(correlation)
         p_values.append(p_value)
+        corr_test_type.append(corr_type)
 
-    return names, correlations, p_values
+    return names, correlations, p_values, corr_test_type
 
 
 def create_correlation_table(names, correlations, p_values):
@@ -84,7 +98,7 @@ def create_correlation_table(names, correlations, p_values):
 def main():
     infile = "statistics.geojson"
     gdf = import_geodata(COMP_PATH, infile)
-    names, correlations, p_values = calculate_correlation(gdf)
+    names, correlations, p_values, corr_test_type = calculate_correlation(gdf)
 
     create_correlation_table(names, correlations, p_values)
 
@@ -98,4 +112,4 @@ if __name__ == "__main__":
 
     main()
 
-    #TODO: Logging, Normalverteilung testen
+    #TODO: Logging, Correlationstyp in tabelle aufnehmen
