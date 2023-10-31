@@ -443,7 +443,8 @@ def create_cm(
             f"Wrote Confusion Matrices for year {year}, aggregation={aggregated}"
         )
 
-    cm_report = classification_report(actual, pred, zero_division=0)
+    cm_report = classification_report(actual, pred, zero_division=0, output_dict=False)
+    cm_report_dict = classification_report(actual, pred, zero_division=0, output_dict=True)
     if aggregated:
         save_path_report = pathlib.Path(
             f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_Report.txt"
@@ -456,6 +457,9 @@ def create_cm(
         )
     with open(save_path_report, "w") as file:
         file.write(cm_report)
+
+    # return report for built-up class
+    return cm_report_dict.get("50")
 
 
 def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm):
@@ -693,20 +697,27 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
 
                         # create confusion matrices
                         wc_data, osm_data = get_rasterdata(rasterpath, comparepath)
-                        create_cm(
+                        report = create_cm(
                             wc_data,
                             osm_data,
                             tilename=get_tilename(rasterpath),
                             year=get_tileyear(rasterpath),
                             aggregated=False,
                         )
-                        create_cm(
+                        if report is not None:
+                            feat_stats[f"built-up_precision_{tile_year}"] = report.get('precision')
+                            feat_stats[f"built-up_recall_{tile_year}"]  = report.get('recall')
+
+                        report_agg = create_cm(
                             wc_data,
                             osm_data,
                             tilename=get_tilename(rasterpath),
                             year=get_tileyear(rasterpath),
                             aggregated=True,
                         )
+                        if report_agg is not None:
+                            feat_stats[f"built-up_precision_{tile_year}_agg"] = report_agg.get('precision')
+                            feat_stats[f"built-up_recall_{tile_year}_agg"]  = report_agg.get('recall')
                         del wc_data, osm_data
                     else:
                         logging.error(
