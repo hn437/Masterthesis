@@ -338,7 +338,7 @@ def create_cm(
             | (pred == 95)
             | (pred == 100),
             120,
-            actual,
+            pred,
         )
 
     # create confusion Matrix using No. of Pixel
@@ -346,8 +346,8 @@ def create_cm(
         actual, pred, rownames=["WC Classes"], colnames=["OSM Classes"], margins=True
     )
     if aggregated or change_cm:
-        index_WC = [0, 120, 50, 60, 70, 80, "All"]
-        columns_OSM = [0, 120, 50, 60, 70, 80, 999, "All"]
+        index_WC = [120, 50, 60, 70, 80, "All"]
+        columns_OSM = [120, 50, 60, 70, 80, 999, "All"]
     else:
         index_WC = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"]
         columns_OSM = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"]
@@ -764,7 +764,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
 
-    main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True)
+    main(compare_change=False, compare_wc=False, compare_wc_osm=True, compare_osm=True)
 
     # TODO:
     #  add logging
