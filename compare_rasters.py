@@ -764,7 +764,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
 
-    main(compare_change=False, compare_wc=False, compare_wc_osm=True, compare_osm=True)
+    main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True)
 
     # TODO:
     #  add logging
