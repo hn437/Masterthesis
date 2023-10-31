@@ -3,7 +3,7 @@ import logging.config
 import os
 import pathlib
 from scipy import stats
-#from scipy.stats import shapiro
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -27,28 +27,33 @@ def calculate_with_scalar(accordance, continuous_data):
     statistic, p = stats.shapiro(continuous_data)
     if p > 0.05:
         correlation = stats.pearsonr(accordance, continuous_data)
-        corr_type = 'Pearson Correlation'
+        corr_type = "Pearson Correlation"
     else:
         correlation = stats.spearmanr(accordance, continuous_data)
-        corr_type = 'Spearman Correlation'
+        corr_type = "Spearman Correlation"
     return correlation, corr_type
 
 
 def calculate_correlation(df):
-    accordance = df['change_accordance']
+    accordance = df["change_accordance"]
     names = []
     correlations = []
     p_values = []
     corr_test_type = []
 
-    for column in (['University']):
+    for column in ["University"]:
         correlation, p_value = calculate_with_nominal(accordance, df[column])
         names.append(column)
         correlations.append(correlation)
         p_values.append(p_value)
-        corr_test_type.append('point biserial correlation')
+        corr_test_type.append("point biserial correlation")
 
-    for column in (['Population', 'X-Coordinate', 'Y-Coordinate', 'Verfügbares Einkommen']):
+    for column in [
+        "Population",
+        "X-Coordinate",
+        "Y-Coordinate",
+        "Verfügbares Einkommen",
+    ]:
         result = calculate_with_scalar(accordance, df[column])
         correlation, p_value = result[0]
         corr_type = result[1]
@@ -62,10 +67,7 @@ def calculate_correlation(df):
 
 def create_correlation_table(names, correlations, p_values):
     # create table of all correlations
-    data = {
-        'correlation': correlations,
-        'p_value': p_values
-    }
+    data = {"correlation": correlations, "p_value": p_values}
     correlation_table = pd.DataFrame(data, index=names)
 
     # save as Excel file
@@ -73,19 +75,36 @@ def create_correlation_table(names, correlations, p_values):
     correlation_table.to_excel(outfile, index=True)
 
     # create heatmap
-    colormaps = ['Blues', 'OrRd']
+    colormaps = ["Blues", "OrRd"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(20, 15))  # 1 row, 2 columns for two subplots
+    fig, axes = plt.subplots(
+        1, 2, figsize=(20, 15)
+    )  # 1 row, 2 columns for two subplots
 
     # Create a heatmap for each column
-    sns.heatmap(correlation_table[['correlation']], annot=True, cmap=colormaps[0], ax=axes[0], xticklabels=False, cbar_kws={'location': 'bottom'})
-    sns.heatmap(correlation_table[['p_value']], annot=True, cmap=colormaps[1], ax=axes[1], xticklabels=False, yticklabels=False, cbar_kws={'location': 'bottom'})
+    sns.heatmap(
+        correlation_table[["correlation"]],
+        annot=True,
+        cmap=colormaps[0],
+        ax=axes[0],
+        xticklabels=False,
+        cbar_kws={"location": "bottom"},
+    )
+    sns.heatmap(
+        correlation_table[["p_value"]],
+        annot=True,
+        cmap=colormaps[1],
+        ax=axes[1],
+        xticklabels=False,
+        yticklabels=False,
+        cbar_kws={"location": "bottom"},
+    )
 
-    axes[0].set_title('Correlation')
-    axes[1].set_title('P-Value')
+    axes[0].set_title("Correlation")
+    axes[1].set_title("P-Value")
 
     plt.suptitle(
-        f"Correlation between Accordance of Change to Built-Up and Other Variables"
+        "Correlation between Accordance of Change to Built-Up and Other Variables"
     )
     plt.tight_layout()
 
@@ -103,7 +122,6 @@ def main():
     create_correlation_table(names, correlations, p_values)
 
 
-
 if __name__ == "__main__":
     # warnings.filterwarnings("error")
     with open(LOGGCONFIG, "r") as f:
@@ -112,4 +130,4 @@ if __name__ == "__main__":
 
     main()
 
-    #TODO: Logging, Correlationstyp in tabelle aufnehmen
+    # TODO: Logging, Correlationstyp in tabelle aufnehmen

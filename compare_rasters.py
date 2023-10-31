@@ -444,7 +444,9 @@ def create_cm(
         )
 
     cm_report = classification_report(actual, pred, zero_division=0, output_dict=False)
-    cm_report_dict = classification_report(actual, pred, zero_division=0, output_dict=True)
+    cm_report_dict = classification_report(
+        actual, pred, zero_division=0, output_dict=True
+    )
     if aggregated:
         save_path_report = pathlib.Path(
             f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_Report.txt"
@@ -481,7 +483,7 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     # also get a file which has Yes wherever WC changed to built up and OSM is built up
     #  in newer file
     wc_changed_built = np.where(
-        (changedata_wc == 'Yes') & (rasterdata_osm == 50), "Yes", "No"
+        (changedata_wc == "Yes") & (rasterdata_osm == 50), "Yes", "No"
     )
     del rasterdata_osm, comparedata_osm
 
@@ -705,8 +707,12 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                             aggregated=False,
                         )
                         if report is not None:
-                            feat_stats[f"built-up_precision_{tile_year}"] = report.get('precision')
-                            feat_stats[f"built-up_recall_{tile_year}"]  = report.get('recall')
+                            feat_stats[f"built-up_precision_{tile_year}"] = report.get(
+                                "precision"
+                            )
+                            feat_stats[f"built-up_recall_{tile_year}"] = report.get(
+                                "recall"
+                            )
 
                         report_agg = create_cm(
                             wc_data,
@@ -716,8 +722,12 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                             aggregated=True,
                         )
                         if report_agg is not None:
-                            feat_stats[f"built-up_precision_{tile_year}_agg"] = report_agg.get('precision')
-                            feat_stats[f"built-up_recall_{tile_year}_agg"]  = report_agg.get('recall')
+                            feat_stats[
+                                f"built-up_precision_{tile_year}_agg"
+                            ] = report_agg.get("precision")
+                            feat_stats[
+                                f"built-up_recall_{tile_year}_agg"
+                            ] = report_agg.get("recall")
                         del wc_data, osm_data
                     else:
                         logging.error(
