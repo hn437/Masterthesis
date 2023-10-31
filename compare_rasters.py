@@ -477,7 +477,7 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     # also get a file which has Yes wherever WC changed to built up and OSM is built up
     #  in newer file
     wc_changed_built = np.where(
-        (changedata_wc == 'Yes') & (comparedata_osm != 50), "Yes", "No"
+        (changedata_wc == 'Yes') & (rasterdata_osm == 50), "Yes", "No"
     )
     del rasterdata_osm, comparedata_osm
 
@@ -487,8 +487,10 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     changedata_osm_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_osm
     )
+    # only mask to where change in WC happened, as we only check whether the newer OSM
+    #  data is built-up, but not if actual change happened.
     wc_changed_built_masked = np.ma.masked_where(
-        np.logical_and(changedata_wc == "No", changedata_osm == "No"), wc_changed_built
+        changedata_wc == "No", wc_changed_built
     )
     del changedata_wc, changedata_osm, wc_changed_built
 
@@ -543,6 +545,7 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
             / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
             * 100
         )
+        # How many Pixels where change in WC happened are Built-Up in OSM
         accordance_2 = (
             df_confusion_pandas_2.values[1][1]
             / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
