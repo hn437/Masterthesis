@@ -345,9 +345,12 @@ def create_cm(
     df_confusion_pandas = pd.crosstab(
         actual, pred, rownames=["WC Classes"], colnames=["OSM Classes"], margins=True
     )
-    if aggregated or change_cm:
+    if aggregated:
         index_WC = [120, 50, 60, 70, 80, "All"]
         columns_OSM = [120, 50, 60, 70, 80, 999, "All"]
+    elif change_cm:
+        index_WC = [0, 120, 50, 60, 70, 80, "All"]
+        columns_OSM = [0, 120, 50, 60, 70, 80, 999, "All"]
     else:
         index_WC = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"]
         columns_OSM = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"]
