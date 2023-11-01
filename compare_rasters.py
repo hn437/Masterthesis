@@ -553,8 +553,8 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
         )
         # How many Pixels where change in WC happened are Built-Up in OSM
         accordance_2 = (
-            df_confusion_pandas_2.values[1][1]
-            / (df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1])
+            df_confusion_pandas_2.values[0][1]
+            / (df_confusion_pandas_2.values[0][0] + df_confusion_pandas_2.values[0][1])
             * 100
         )
     except:
