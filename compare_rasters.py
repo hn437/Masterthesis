@@ -562,15 +562,17 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
         )
     except:
         if (
-            df_confusion_pandas.axes[0][0] == "Yes"
-            and df_confusion_pandas.axes[1][0] == "No"
+                df_confusion_pandas.axes[0][0] == "Yes"
+                and df_confusion_pandas.axes[1][0] == "No"
         ):
             accordance = 0
+            accordance_2 = None
         elif (
-            df_confusion_pandas.axes[0][0] == "Yes"
-            and df_confusion_pandas.axes[1][0] == "Yes"
+                df_confusion_pandas.axes[0][0] == "Yes"
+                and df_confusion_pandas.axes[1][0] == "Yes"
         ):
             accordance = 100
+            accordance_2 = 100
         else:
             logging.error(f"Could not calculate accordance for tile {tilename}")
     try:
