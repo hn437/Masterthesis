@@ -574,14 +574,16 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
         else:
             logging.error(f"Could not calculate accordance for tile {tilename}")
     try:
-        wc_pixel_no_to_built = (
-            df_confusion_pandas.values[1][0] + df_confusion_pandas.values[1][1]
-        )
-        osm_pixel_no_to_built = (
-            df_confusion_pandas.values[0][1] + df_confusion_pandas.values[1][1]
-        )
+        try:
+            osm_pixel_no_to_built = df_confusion_pandas["Yes"].sum()
+        except:
+            osm_pixel_no_to_built = 0
+        try:
+            wc_pixel_no_to_built = df_confusion_pandas.loc["Yes"].sum()
+        except:
+            wc_pixel_no_to_built = 0
     except:
-        logging.error(
+        logging.warning(
             f"Could not calculate number of pixels changed to built up for tile {tilename}"
         )
     del df_confusion_pandas, df_confusion_pandas_2
