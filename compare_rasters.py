@@ -3,6 +3,9 @@ import logging.config
 import os
 import pathlib
 
+from skimage.filters.rank import majority
+from skimage.morphology import cube
+
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,6 +33,7 @@ from config import (
     TERRADIR,
     WC_COMP_PATH,
     WC_OSM_COMP_PATH,
+    MAJORITY_SIZE,
 )
 from download_worldcover_data import import_geodata
 
@@ -208,7 +212,16 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     """
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
     # write 0 where class built-up was already present or is not present in newer dataset
-    outputdata = np.where((rasterdata == 50) & (comparedata != 50), comparedata, 0)
+    # write one where loss of nature was detected
+    outputdata = np.where((rasterdata == 50) & (comparedata != 50), 1, 0)
+    # only do if WC, not if OSM
+    if rasterpath.stem[:3] == "ESA":
+        # majority filter
+        outputdata = majority(outputdata, cube(MAJORITY_SIZE))
+
+    # reassign the original classes where loss of nature happened
+    outputdata = np.where((outputdata == 1), comparedata, 0)
+
     with rasterio.open(rasterpath) as raster:
         save_raster(outputdata, resultfile, raster.crs, raster.transform)
     logging.info(
@@ -473,22 +486,23 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
     del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
 
-    # write No where class built-up was already present or is not present in newer dataset
-    # write Yes where change to built-up happened
-    changedata_wc = np.where(
-        (rasterdata_wc == 50) & (comparedata_wc != 50), "Yes", "No"
-    )
+    # write 0 where class built-up was already present or is not present in newer dataset
+    # write 1 where change to built-up happened
+    changedata_wc = np.where((rasterdata_wc == 50) & (comparedata_wc != 50), 1, 0)
+    changedata_wc = majority(changedata_wc, cube(MAJORITY_SIZE))
     del rasterdata_wc, comparedata_wc
-    changedata_osm = np.where(
-        (rasterdata_osm == 50) & (comparedata_osm != 50), "Yes", "No"
-    )
+    changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
 
     # also get a file which has Yes wherever WC changed to built up and OSM is built up
     #  in newer file
     wc_changed_built = np.where(
-        (changedata_wc == "Yes") & (rasterdata_osm == 50), "Yes", "No"
+        (changedata_wc == 1) & (rasterdata_osm == 50), "Yes", "No"
     )
     del rasterdata_osm, comparedata_osm
+    # write No where class built-up was already present or is not present in newer dataset
+    # write Yes where change to built-up happened
+    changedata_wc = np.where(changedata_wc == 1, "Yes", "No")
+    changedata_osm = np.where(changedata_osm == 1, "Yes", "No")
 
     changedata_wc_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_wc
