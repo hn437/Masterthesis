@@ -132,8 +132,10 @@ def create_correlation_table(names, correlations, p_values, accordance_no):
 def main():
     infile = "statistics.geojson"
     gdf = import_geodata(COMP_PATH, infile)
-    for accordance_no in range(1,3):
-        names, correlations, p_values, corr_test_type = calculate_correlation(gdf, accordance_no)
+    for accordance_no in range(1, 3):
+        names, correlations, p_values, corr_test_type = calculate_correlation(
+            gdf, accordance_no
+        )
         create_correlation_table(names, correlations, p_values, accordance_no)
 
 
