@@ -34,8 +34,14 @@ def calculate_with_scalar(accordance, continuous_data):
     return correlation, corr_type
 
 
-def calculate_correlation(df):
-    accordance = df["change_accordance"]
+def calculate_correlation(df, accordance_no):
+    if accordance_no == 1:
+        accordance = df["change_accordance"]
+    elif accordance_no == 2:
+        accordance = df["change_accordance_2"]
+    else:
+        logging.error("Accordance out of Range")
+
     names = []
     correlations = []
     p_values = []
@@ -52,7 +58,7 @@ def calculate_correlation(df):
         "Population",
         "X-Coordinate",
         "Y-Coordinate",
-        "Verfügbares Einkommen",
+        "Disposable Income",
     ]:
         result = calculate_with_scalar(accordance, df[column])
         correlation, p_value = result[0]
@@ -65,13 +71,22 @@ def calculate_correlation(df):
     return names, correlations, p_values, corr_test_type
 
 
-def create_correlation_table(names, correlations, p_values):
+def create_correlation_table(names, correlations, p_values, accordance_no):
     # create table of all correlations
     data = {"correlation": correlations, "p_value": p_values}
     correlation_table = pd.DataFrame(data, index=names)
 
+    if accordance_no == 1:
+        file_stem = "correlations_acc"
+        title_insert = "Accordance"
+    elif accordance_no == 2:
+        file_stem = "correlations_acc_2"
+        title_insert = "Accordance 2"
+    else:
+        logging.error("Accordance out of Range")
+
     # save as Excel file
-    outfile = pathlib.Path(f"{COMP_PATH}/correlations.xlsx")
+    outfile = pathlib.Path(f"{COMP_PATH}/{file_stem}.xlsx")
     correlation_table.to_excel(outfile, index=True)
 
     # create heatmap
@@ -104,22 +119,22 @@ def create_correlation_table(names, correlations, p_values):
     axes[1].set_title("P-Value")
 
     plt.suptitle(
-        "Correlation between Accordance of Change to Built-Up and Other Variables"
+        f"Correlation between {title_insert} of Change to Built-Up and Other Variables"
     )
     plt.tight_layout()
 
     if not os.path.exists(COMP_PATH):
         os.makedirs(COMP_PATH)
-    save_path_norm = pathlib.Path(f"{COMP_PATH}/correlations.png")
+    save_path_norm = pathlib.Path(f"{COMP_PATH}/{file_stem}.png")
     plt.savefig(save_path_norm)
 
 
 def main():
     infile = "statistics.geojson"
     gdf = import_geodata(COMP_PATH, infile)
-    names, correlations, p_values, corr_test_type = calculate_correlation(gdf)
-
-    create_correlation_table(names, correlations, p_values)
+    for accordance_no in range(1,3):
+        names, correlations, p_values, corr_test_type = calculate_correlation(gdf, accordance_no)
+        create_correlation_table(names, correlations, p_values, accordance_no)
 
 
 if __name__ == "__main__":
