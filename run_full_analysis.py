@@ -7,6 +7,7 @@ import yaml
 import download_worldcover_data
 import compare_rasters
 import download_osm_data
+import calculate_oqapi
 import calculate_correlation
 from config import LOGGCONFIG
 
@@ -23,9 +24,12 @@ async def main():
         compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True
     )
     logging.info("Finished Script 3")
-    logging.info("Running Script 4: Calculating Correlations")
-    calculate_correlation.main()
+    logging.info("Running Script 4: Calculation Ohsome Quality API")
+    calculate_oqapi.main()
     logging.info("Finished Script 4")
+    logging.info("Running Script 5: Calculating Correlations")
+    calculate_correlation.main()
+    logging.info("Finished Script 5")
     logging.info("Analysis Finished!")
 
 
