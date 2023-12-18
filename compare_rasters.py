@@ -615,15 +615,28 @@ def adjusted_change_calculation(
     tilename = get_tilename(rasterpath_wc)
     rasterdata_wc, comparedata_wc = get_rasterdata(rasterpath_wc, comparepath_wc)
     rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
-    del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+    del comparepath_wc, rasterpath_osm, comparepath_osm
 
     # write 0 where class built-up was already present or is not present in newer dataset
     # write 1 where change to built-up happened but was not present in older OSM data
     changedata_wc = np.where(
         (rasterdata_wc == 50) & (comparedata_wc != 50) & (rasterdata_osm != 50), 1, 0
     )
+    changedata_wc_orig_vals = np.where((changedata_wc == 1), rasterdata_wc, 0)
+
+    resultfile = pathlib.Path(
+        WC_COMP_PATH + f"{tilename}_wc_loss_of_nature_adjusted.tif"
+    )
+    loss_of_nature_vector(rasterpath_wc, changedata_wc_orig_vals, resultfile)
+
     wc_change_pixel = np.count_nonzero(changedata_wc)
-    del rasterdata_wc, comparedata_wc
+    del (
+        rasterpath_wc,
+        rasterdata_wc,
+        comparedata_wc,
+        changedata_wc_orig_vals,
+        resultfile,
+    )
 
     changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
 
