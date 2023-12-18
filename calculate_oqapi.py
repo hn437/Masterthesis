@@ -72,7 +72,10 @@ def main():
     outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
     with open(outpath, "w") as file:
         file.write(gdf.to_json())
-    logging.info(f"File saved as {outpath}. Done!")
+    logging.info(f"File saved as {outpath}.")
+    outpath_excel = pathlib.Path(f"{COMP_PATH}/statistics.xlsx")
+    gdf.to_excel(outpath_excel, index=False)
+    logging.info(f"Excel File saved as {outpath_excel}. Done!")
 
 
 if __name__ == "__main__":
