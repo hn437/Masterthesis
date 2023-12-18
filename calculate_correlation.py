@@ -39,6 +39,8 @@ def calculate_correlation(df, accordance_no):
         accordance = df["change_accordance"]
     elif accordance_no == 2:
         accordance = df["change_accordance_2"]
+    elif accordance_no == 3:
+        accordance = df["matching_percent"]
     else:
         logging.error("Accordance out of Range")
 
@@ -59,6 +61,8 @@ def calculate_correlation(df, accordance_no):
         "X-Coordinate",
         "Y-Coordinate",
         "Disposable Income",
+        "osm_completeness_2021",
+        "osm_acc_agg_2021_no_nan",
     ]:
         result = calculate_with_scalar(accordance, df[column])
         correlation, p_value = result[0]
@@ -82,6 +86,9 @@ def create_correlation_table(names, correlations, p_values, accordance_no):
     elif accordance_no == 2:
         file_stem = "correlations_acc_2"
         title_insert = "Accordance 2"
+    elif accordance_no == 3:
+        file_stem = "correlations_adjusted"
+        title_insert = "Adjusted Match"
     else:
         logging.error("Accordance out of Range")
 
@@ -132,7 +139,7 @@ def create_correlation_table(names, correlations, p_values, accordance_no):
 def main():
     infile = "statistics.geojson"
     gdf = import_geodata(COMP_PATH, infile)
-    for accordance_no in range(1, 3):
+    for accordance_no in range(1, 4):
         names, correlations, p_values, corr_test_type = calculate_correlation(
             gdf, accordance_no
         )
