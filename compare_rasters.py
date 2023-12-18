@@ -3,8 +3,6 @@ import logging.config
 import os
 import pathlib
 
-from skimage.filters.rank import majority
-from skimage.morphology import cube
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -33,7 +31,6 @@ from config import (
     TERRADIR,
     WC_COMP_PATH,
     WC_OSM_COMP_PATH,
-    MAJORITY_SIZE,
 )
 from download_worldcover_data import import_geodata
 
@@ -214,10 +211,12 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     # write 0 where class built-up was already present or is not present in newer dataset
     # write one where loss of nature was detected
     outputdata = np.where((rasterdata == 50) & (comparedata != 50), 1, 0)
+
+    # comment out majority filter
     # only do if WC, not if OSM
-    if rasterpath.stem[:3] == "ESA":
-        # majority filter
-        outputdata = majority(outputdata, cube(MAJORITY_SIZE))
+    # if rasterpath.stem[:3] == "ESA":
+    #     # majority filter
+    #     outputdata = majority(outputdata, cube(MAJORITY_SIZE))
 
     # reassign the original classes where loss of nature happened
     outputdata = np.where((outputdata == 1), comparedata, 0)
@@ -489,7 +488,10 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     # write 0 where class built-up was already present or is not present in newer dataset
     # write 1 where change to built-up happened
     changedata_wc = np.where((rasterdata_wc == 50) & (comparedata_wc != 50), 1, 0)
-    changedata_wc = majority(changedata_wc, cube(MAJORITY_SIZE))
+
+    # comment out majority filter
+    # changedata_wc = majority(changedata_wc, cube(MAJORITY_SIZE))
+
     del rasterdata_wc, comparedata_wc
     changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
 
@@ -607,6 +609,134 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     return accordance, accordance_2, wc_pixel_no_to_built, osm_pixel_no_to_built
 
 
+def adjusted_change_calculation(
+    rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+):
+    tilename = get_tilename(rasterpath_wc)
+    rasterdata_wc, comparedata_wc = get_rasterdata(rasterpath_wc, comparepath_wc)
+    rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
+    del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+
+    # write 0 where class built-up was already present or is not present in newer dataset
+    # write 1 where change to built-up happened but was not present in older OSM data
+    changedata_wc = np.where(
+        (rasterdata_wc == 50) & (comparedata_wc != 50) & (rasterdata_osm != 50), 1, 0
+    )
+    wc_change_pixel = np.count_nonzero(changedata_wc)
+    del rasterdata_wc, comparedata_wc
+
+    changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
+
+    # dort wo WC change und OSM nicht, schreibe neuen OSM value sonst 0
+    osm_vals_where_wc_change = np.where(
+        (changedata_wc == 1) & (changedata_osm == 0), comparedata_osm, 0
+    )
+    unique, counts = np.unique(osm_vals_where_wc_change, return_counts=True)
+    osm_where_wc_change = dict(zip(unique, counts))
+
+    # remove value 0 (=where no WC change happened)
+    osm_where_wc_change.pop(0, None)
+    # get value how many pixels are no_data in OSM where WC has change
+    no_osm_data_for_change = osm_where_wc_change[999]
+
+    # remove all OSM_nodata for WC change pixels
+    osm_where_wc_change.pop(999, None)
+    # calculate how many osm pixels have a class but not built-up where WC has change to built-up
+    other_osm_class_for_change = sum(osm_where_wc_change.values())
+    del (
+        rasterdata_osm,
+        comparedata_osm,
+        osm_vals_where_wc_change,
+        unique,
+        counts,
+        osm_where_wc_change,
+    )
+
+    # write No where class built-up was already present or is not present in newer dataset
+    # write Yes where change to built-up happened
+    changedata_wc = np.where(changedata_wc == 1, "Yes", "No")
+    changedata_osm = np.where(changedata_osm == 1, "Yes", "No")
+
+    changedata_wc_masked = np.ma.masked_where(
+        np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_wc
+    )
+    changedata_osm_masked = np.ma.masked_where(
+        np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_osm
+    )
+    del changedata_wc, changedata_osm
+
+    actual = np.nan_to_num(changedata_wc_masked.flatten(), nan=999)
+    pred = np.nan_to_num(changedata_osm_masked.flatten(), nan=999)
+    del changedata_wc_masked, changedata_osm_masked
+
+    # create confusion Matrix using No. of Pixel
+    df_confusion_pandas = pd.crosstab(
+        actual, pred, rownames=["WC Change"], colnames=["OSM Change"]
+    )
+    del actual, pred
+
+    # create CM Plot
+    fig, ax = plt.subplots(figsize=(20, 15))
+    cm_map = sns.heatmap(
+        df_confusion_pandas,
+        annot=True,
+        fmt="",
+        robust=True,
+        annot_kws={"fontsize": 9},
+        square=True,
+        ax=ax,
+        cmap="Blues",
+    )
+    ax.set_xlabel("OSM Change", labelpad=10)
+    ax.set_ylabel("WC Change", labelpad=10)
+    border_linewidth = 1
+    for _, spine in cm_map.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(border_linewidth)
+    if not os.path.exists(CM_PATH):
+        os.makedirs(CM_PATH)
+    plt.title(
+        f"Confusion Matrix stating if adjusted Change to Built-Up is matching in both Datasets ({tilename})"
+    )
+    save_path_norm = pathlib.Path(
+        f"{CM_PATH}/{tilename}_compare_adjusted_change_area.png"
+    )
+    plt.savefig(save_path_norm)
+    plt.close()
+
+    try:
+        matching_pixel = df_confusion_pandas.values[1][1]
+    except:
+        if (
+            df_confusion_pandas.axes[0][0] == "Yes"
+            and df_confusion_pandas.axes[1][0] == "No"
+        ):
+            matching_pixel = 0
+        elif (
+            df_confusion_pandas.axes[0][0] == "Yes"
+            and df_confusion_pandas.axes[1][0] == "Yes"
+        ):
+            matching_pixel = wc_change_pixel
+        else:
+            logging.error(f"Could not calculate accordance for tile {tilename}")
+
+    matching_percent = matching_pixel / wc_change_pixel * 100
+    no_osm_data_for_change_percent = no_osm_data_for_change / wc_change_pixel * 100
+    other_osm_class_for_change_percent = (
+        other_osm_class_for_change / wc_change_pixel * 100
+    )
+
+    return (
+        wc_change_pixel,
+        matching_pixel,
+        no_osm_data_for_change,
+        other_osm_class_for_change,
+        matching_percent,
+        no_osm_data_for_change_percent,
+        other_osm_class_for_change_percent,
+    )
+
+
 def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True):
     wc_datapath = pathlib.Path(TERRADIR + "Maps/")
     osm_datapath = pathlib.Path(OSMRASTER)
@@ -665,6 +795,19 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 ) = compare_change_area(
                     rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
                 )
+
+                (
+                    feat_stats["wc_change_pixel"],
+                    feat_stats["matching_pixel"],
+                    feat_stats["no_osm_data_for_change"],
+                    feat_stats["other_osm_class_for_change"],
+                    feat_stats["matching_percent"],
+                    feat_stats["no_osm_data_for_change_percent"],
+                    feat_stats["other_osm_class_for_change_percent"],
+                ) = adjusted_change_calculation(
+                    rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
+                )
+
             if compare_wc:
                 comparepath = get_wc_to_compare(rasterpath, wc_datapath)
                 if comparepath is not None:
