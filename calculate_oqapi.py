@@ -52,6 +52,7 @@ def main():
             "tree",
             "water",
             "wetland",
+            "garden"
         ]:
             logging.info(f"Calculating Mapping Saturation for Filter {filter}")
 
