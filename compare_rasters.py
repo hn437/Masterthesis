@@ -308,6 +308,9 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
 
         outputpath = pathlib.Path(f"{resultfile.parent}/{resultfile.stem}.geojson")
 
+        if not os.path.exists(resultfile.parent):
+            os.makedirs(resultfile.parent)
+
         with open(outputpath, "w") as f:
             f.write(gdf.to_json())
 
