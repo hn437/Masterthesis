@@ -327,10 +327,14 @@ def create_cm(
     rasterdata, comparedata, tilename, year=None, aggregated=False, change_cm=False
 ):
     # calculate confusion matrix. First Position: actual, Second: predicted
-    actual = np.nan_to_num(rasterdata.flatten(), nan=999)
+    actual_raw = np.nan_to_num(rasterdata.flatten(), nan=999)
     del rasterdata
-    pred = np.nan_to_num(comparedata.flatten(), nan=999)
+    pred_raw = np.nan_to_num(comparedata.flatten(), nan=999)
     del comparedata
+
+    # only use data where OSM data is available
+    actual = actual_raw[pred_raw != 999]
+    pred = pred_raw[pred_raw != 999]
 
     if aggregated:
         actual = np.where(
@@ -362,13 +366,13 @@ def create_cm(
     )
     if aggregated:
         index_WC = [120, 50, 60, 70, 80, "All"]
-        columns_OSM = [120, 50, 60, 70, 80, 999, "All"]
+        columns_OSM = [120, 50, 60, 70, 80, "All"]
     elif change_cm:
         index_WC = [0, 120, 50, 60, 70, 80, "All"]
-        columns_OSM = [0, 120, 50, 60, 70, 80, 999, "All"]
+        columns_OSM = [0, 120, 50, 60, 70, 80, "All"]
     else:
         index_WC = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"]
-        columns_OSM = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, 999, "All"]
+        columns_OSM = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100, "All"]
 
     df_confusion_pandas = df_confusion_pandas.reindex(
         index=index_WC,
