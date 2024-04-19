@@ -13,6 +13,7 @@ from config import LOGGCONFIG
 
 
 async def main():
+    """Run the full analysis consisting of 5 scripts."""
     logging.info("Running Script 1: Downloading WC Data")
     download_worldcover_data.main()
     logging.info("Finished Script 1")
