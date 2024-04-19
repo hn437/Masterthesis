@@ -27,6 +27,12 @@ from config import (
 
 
 def import_geodata(input_dir: str, infile: str) -> gpd.GeoDataFrame:
+    """
+    Function to import geodata from input directory holding AoIs
+    :param input_dir: directory holding input files
+    :param infile: Input GeoJSON file holding AoIs
+    :return: GeoDataFrame of input AoIs
+    """
     if infile is not None:
         path_to_file = pathlib.Path(input_dir, infile)
         df = gpd.read_file(path_to_file)
@@ -38,11 +44,18 @@ def import_geodata(input_dir: str, infile: str) -> gpd.GeoDataFrame:
 
 
 def download_terrascope_data(directory: pathlib.Path) -> None:
+    """
+    Function to download WorldCover Data for AoIs from Terrascope, process it and saves
+     LULC maps to drive
+    :param directory: Scratch directory to store temporary files
+    :return: None
+    """
     # Authenticate to the Terrascope platform and create catalogue object
     catalogue = Catalogue().authenticate_non_interactive(
         username=USERNAME, password=PASSWORD
     )
 
+    # get all files with input AoIs
     if len(INFILES) == 0:
         for filename in os.listdir(INPUTDIR):
             if filename.endswith(".geojson"):
@@ -66,6 +79,7 @@ def download_terrascope_data(directory: pathlib.Path) -> None:
             )
             continue
 
+        # get geometry per AoI to query respective WC data
         for index in gdf.index:
             logging.info(f"Working on feature {index+1} of {len(gdf)}")
             feature = gdf.loc[[index]]
@@ -135,6 +149,14 @@ def clean_terradata(
     feature_id: int,
     feature_geom: shapely.geometry.polygon.Polygon,
 ) -> None:
+    """
+    Function to call clip function and merge function if necessary for downloaded WC data
+    :param scratch_dir:
+    :param file_no: number of input file currently iterating over, used for naming result
+    :param feature_id: feature of input AoIs currently iterating over, used for naming result
+    :param feature_geom: feature geometry of input AoI, used for clipping
+    :return: None
+    """
     maps_dir = TERRADIR + "Maps/"
     quality_dir = TERRADIR + "Quality/"
     if not os.path.exists(maps_dir):
@@ -149,7 +171,7 @@ def clean_terradata(
     # check if AoI overlays multiple WorldCover Tiles
     if len(list(scratch_dir.rglob("*2020*_Map.tif"))) > 1:
         logging.info("Merging WorldCover Data and saving it")
-        # make lists of files olding Maps or Data Quality per year
+        # make lists of files holding Maps or Data Quality per year
         maps_20 = list(scratch_dir.rglob("*2020*_Map.tif"))
         maps_21 = list(scratch_dir.rglob("*2021*_Map.tif"))
         quality_20 = list(scratch_dir.rglob("*2020*_InputQuality.tif"))
@@ -162,6 +184,7 @@ def clean_terradata(
         merge_tiles(quality_21, quality_dir, "InputQuality", 1, feature_id)
 
     else:
+        # if AoI within a single raster tile rename it to match naming scheme
         logging.info("Saving WorldCover Data")
         # AoI within a single raster tile -> no merging, but renaming and moving to dir
         for file in scratch_dir.rglob("*_Map.tif"):
@@ -176,15 +199,23 @@ def clean_terradata(
 def clip_all_downloads(
     scratch_dir: pathlib.Path, feature_geom: shapely.geometry.polygon.Polygon
 ) -> None:
+    """
+    Function to clip all downloaded WC data of one AoI to AoI Bbox extent
+    :param scratch_dir: temporary directory holding downloaded WC data
+    :param feature_geom: AoI  Geometry
+    :return: None
+    """
     # create bounding box instead of using original feature
     bounds = feature_geom.bounds
     geom = box(*bounds)
 
+    # for each raster tile in scratch dir, clip to AoI extent
     for tile in list(scratch_dir.rglob("*.tif")):
         with rio.open(tile) as src:
             out_image, out_transform = mask(src, [geom], crop=True, all_touched=True)
             out_meta = src.meta.copy()  # copy the metadata of the source DEM
 
+        # update raster metadata
         out_meta.update(
             {
                 "driver": "Gtiff",
@@ -194,6 +225,7 @@ def clip_all_downloads(
             }
         )
 
+        # store clipped raster
         out_name = str(tile.stem)[:4] + "FileMasked" + str(tile.name)[14:]
         out_path = pathlib.Path(scratch_dir / out_name)
         with rio.open(out_path, "w", **out_meta) as dst:
@@ -209,6 +241,15 @@ def clip_all_downloads(
 def merge_tiles(
     tiles: list, dir_path: str, tiletype: str, file_no: int, feature_id: int
 ) -> None:
+    """
+    Function to merge clipped WC tiles of same type and year and save them to drive
+    :param tiles: raster parts of the AoI
+    :param dir_path: path to save merged raster to
+    :param tiletype: defines if Map or Quality data
+    :param file_no: number of input file currently iterating over, used for naming result
+    :param feature_id: feature of input AoIs currently iterating over, used for naming result
+    :return: None
+    """
     raster_to_mosiac = []
     for tile in tiles:
         raster = rio.open(tile)
@@ -237,14 +278,11 @@ def merge_tiles(
 
 
 def main():
+    """Function sets temporary scratch directory and executes function to download WC
+     data"""
     path_terradir_scratch = pathlib.Path(TERRADIR + "scratch/")
 
     download_terrascope_data(path_terradir_scratch)
-
-    # TODO:
-    #  Improve Logging
-    #  add Docstrings
-    #  add Comments
 
 
 if __name__ == "__main__":
