@@ -37,16 +37,31 @@ from config import (
 
 
 def get_tilename(file: pathlib.Path) -> str:
+    """
+    Determines the name of the tile/AoI from the WC rasterfile name.
+    :param file: WC Rasterfile path
+    :return: string representing the tile name
+    """
     name = file.stem[-13:-4]
     return name
 
 
 def get_tileyear(file: pathlib.Path) -> str:
+    """
+    Determines the year the WC rasterfile represents from its filename.
+    :param file: Path to the WC rasterfile
+    :return: string representing the year
+    """
     year = file.stem[-23:-19]
     return year
 
 
 def get_extent(file: pathlib.Path) -> FeatureCollection:
+    """
+    Get the extent of a rasterfile as a FeatureCollection in order to use it as AoI.
+    :param file: rasterfile from which AoI should be determined
+    :return: a BoundingBox geometry in a FeatureCollection maching the rasterfile extent
+    """
     with rasterio.open(file) as raster:
         bounds = raster.bounds
     geom = box(*bounds)
@@ -55,6 +70,12 @@ def get_extent(file: pathlib.Path) -> FeatureCollection:
 
 
 def load_dict(path: str, val_type: type) -> dict:
+    """
+    Load a dictionary from a file with key-value pairs separated by a comma.
+    :param path: path tho the text file the dictionary is stored in
+    :param val_type: value type the red in values should be converted to
+    :return: dictionary holding values of type val_type
+    """
     d = {}
     with open(path) as f:
         for line in f:
@@ -65,6 +86,12 @@ def load_dict(path: str, val_type: type) -> dict:
 
 
 def fixing_geometry(geometry):
+    """
+    Function to apply make_valid to a geometry if it is not valid. New Function is
+        defined to be able to apply this in a lambda function
+    :param geometry: geometry to be fixed
+    :return: fixed geometry
+    """
     if not geometry.is_valid:
         return make_valid(geometry)
     else:
@@ -79,8 +106,20 @@ async def get_vector_areas(
     buffer_dict: dict,
     class_codes: dict,
 ) -> Optional[gpd.GeoDataFrame]:
+    """
+    Query all OSM data for a specific filter and return the features as a GeoDataFrame.
+    :param path_to_filter: path to file in which all OSM tags to be queried are stored
+    :param time: Point in time the OSM data should represent
+    :param extent: AoI for which the OSM data should be queried
+    :param confidence_dict: dictionary holding values to be assigned as attribute
+    :param buffer_dict: dictionary holding buffer sizes line features should be buffered
+    :param class_codes: dictionary holding the values which represent a LULC class
+    :return: A Geodataframe containing all queried OSM features or None if no features
+        could be derived
+    """
     logging.info(f"Querying OSM Data for Filter {path_to_filter.stem}")
 
+    # define empty GeoDataFrames to collect all features
     df_of_features = gpd.GeoDataFrame()
     buffered_linefeatures = gpd.GeoDataFrame()
 
@@ -99,20 +138,24 @@ async def get_vector_areas(
             for line in lines:
                 osmfilter = line
                 if len(osmfilter) != 0 and osmfilter != "\n" and counter == 0:
+                    # if first line and containing OSM tags: query polygons
                     filterquery = f"({osmfilter}) and geometry:polygon"
                 elif len(osmfilter) != 0 and osmfilter != "\n" and counter == 1:
+                    # if second line and containing OSM tags: query lines
                     filterquery = f"({osmfilter}) and geometry:line"
                 else:
                     counter += 1
                     continue
 
+                # build data for Ohsome API query
                 data = {
                     "bpolys": geojson.dumps(extent),
                     "time": time,
                     "filter": filterquery,
                     "properties": "tags",
                 }
-                # response = requests.post(APIENDPOINT, data=data)
+
+                # querry the data
                 async with httpx.AsyncClient(timeout=None) as client:
                     response = await client.post(APIENDPOINT, data=data)
                 response.raise_for_status()
@@ -130,13 +173,15 @@ async def get_vector_areas(
                         # only continue processing if features were found
                         # set crs as it is not returned in response, but is always WGS 84
                         datapart.set_crs(4326, inplace=True)
+
                         # dropping all columns (= OSM Keys) not actively queried
                         column_names = datapart.columns.values.tolist()[3:]
                         confidence_keys = [key for key in confidence_dict]
                         col_to_drop = list(set(column_names) - set(confidence_keys))
                         datapart = datapart.drop(columns=col_to_drop)
 
-                        # if dealing with line features: query usable UTM projection and reproject data to be able to buffer them by meters
+                        # if dealing with line features: query usable UTM projection and
+                        #  reproject data to be able to buffer them by meters
                         if counter == 1:
                             # get example coordinate to query useable UTM projection
                             tile_corner_coords = extent["features"][0]["geometry"][
@@ -185,8 +230,9 @@ async def get_vector_areas(
                                 # iterate over features to buffer the lines
                                 buffer_dist = None
                                 for key in used_keys:
-                                    # get each key, get the value for this key of this feature anc check
-                                    #  if it is in the dict of buffer values.
+                                    # get each key, get the value for this key of this
+                                    #  feature and check if it is in the dict of buffer
+                                    #  values.
                                     combined_key = f"{key}={row[key][index]}"
                                     if combined_key in buffer_dict:
                                         buffer_dist = buffer_dict[combined_key]
@@ -216,11 +262,13 @@ async def get_vector_areas(
                                 del buffered_linefeatures
                                 datapart["confidence"] = int(3)
 
+                        # add features t newly created GeoDataFrame
                         df_of_features = pandas.concat(
                             [df_of_features, datapart], ignore_index=True
                         )
                     counter += 1
 
+            # add class code for this filter (= LULC Class) as value
             df_of_features["class_code"] = int(class_codes[path_to_filter.stem])
 
             logging.info(f"Finished querying OSM Data for Filter {path_to_filter.stem}")
@@ -253,6 +301,11 @@ async def gather_with_semaphore(tasks: list, *args, **kwargs) -> Coroutine:
 
 
 def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Resolve overlays of features in a GeoDataFrame so that no overlapping features exist
+    :param input_df: GeoDataFrame containing all queried OSM features
+    :return: GeoDataFrame containing all queried OSM features with resolved overlays
+    """
     logging.info("Cleaning DF")
     # drop duplicates
     gdf_without_duplicates = input_df.drop_duplicates(ignore_index=True)
@@ -262,8 +315,8 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         lambda geom: fixing_geometry(geom)
     )
     gdf_area = gdf_without_duplicates.explode(ignore_index=True)
-    # drop geoms != Polygons
     polys = gdf_area[gdf_area.geom_type == "Polygon"]
+    # warn about features which are not polygone type
     no_polys = gdf_area[gdf_area.geom_type != "Polygon"]
     if len(no_polys) > 0:
         logging.warning(
@@ -277,7 +330,6 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # check if overlays exist within gdf
     overlays_exist = False
     for index, row in input_df.iterrows():
-        # TODO: Check if this may just slows down or if its actually improving
         # create temporary layer of all features except the one to be checked
         data_temp1 = input_df.drop(input_df.iloc[[index]].index)
         # overlap feature with all other features
@@ -309,6 +361,7 @@ def resolve_overlays(input_df: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
                 res_difference_single.geom_type == "Polygon"
             ]
 
+            # combine the new clipped features with the already cleaned features
             cleaned_features = pandas.concat(
                 [cleaned_features, res_difference_polys], ignore_index=True
             )
@@ -324,6 +377,18 @@ async def query_osm_data(
     class_codes: dict,
     time: str,
 ) -> Optional[gpd.GeoDataFrame]:
+    """
+
+    :param extent: FeatureCollection representing the AoI
+    :param confidence_dict: dictionary holding values to be assigned as attribute
+        depending on the key of the OSM feature
+    :param buffer_dict: dictionary holding buffer sizes line features should be buffered
+        with depending on the key of the OSM feature
+    :param class_codes: dictionary holding the values which represent a LULC class
+    :param time: point in time the OSM data should represent
+    :return: GeoDataFrame containing all queried OSM features with resolved overlays or
+        None, if no features could be derived
+    """
     logging.info("Querying OSM Data")
     # create task list, getting all vector features for each filter
     tasks = []
@@ -336,7 +401,6 @@ async def query_osm_data(
 
     # await the result for all ohsome queries
     tasks_results = await gather_with_semaphore(tasks, return_exceptions=True)
-    # create empty gdf to collect all features
     if any(not isinstance(n, gpd.GeoDataFrame) for n in tasks_results):
         logging.error("Cannot Process Vector DataFrames due to Errors")
         for index, element in enumerate(tasks_results):
@@ -351,16 +415,14 @@ async def query_osm_data(
         logging.info(
             f"Successfully queried OSM Data and got Features for {len(tasks_results)} Classes"
         )
+        # combine all queried features from any class in one GeoDataFrame
         all_vector_data = gpd.GeoDataFrame(
             pandas.concat(tasks_results, ignore_index=True), crs=4326
         )
         del tasks, tasks_results
         if len(all_vector_data.index) > 0:
+            # resolve overlays of features so that no overlapping features exist anymore
             all_vector_data = resolve_overlays(all_vector_data)
-
-            # TODO: remove below. For Testing only
-            # with open("./data/test/gdf_cleaned.geojson", "w") as f:
-            #    f.write(all_vector_data.to_json())
 
             return all_vector_data
         else:
@@ -369,14 +431,25 @@ async def query_osm_data(
 
 
 def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -> None:
+    """
+    Convert the OSM vector data to raster data using the attribute 'class_code' as
+     valuesand save it to the drive.
+    :param df: GeoDataFrame containing OSM vector data
+    :param rastertile: Respective WC raster for wich OSM raster will be created. Used to
+     derive name from (identifying file and AoI Feature)
+    :param time: Year the data represents
+    :return: None
+    """
     # get WorldCover raster to make new raster with same properties
     logging.info("Attempting to write Raster from Vector Features")
     wc_data = rioxarray.open_rasterio(rastertile)
     try:
+        # make new raster from dataframe and write class code as value
         osm_raster = make_geocube(
             vector_data=df, measurements=["class_code"], like=wc_data, fill=999
         ).astype("int16")
         del df
+        # save raster to drive
         tilename = get_tilename(rastertile)
         osm_raster_path = OSMRASTER + tilename + f"_{time}.tif"
         if not os.path.exists(OSMRASTER):
@@ -388,7 +461,8 @@ def write_as_raster(df: gpd.GeoDataFrame, rastertile: pathlib.Path, time: str) -
     del wc_data
 
 
-async def main():
+async def main() -> None:
+    """Main function to download and process OSM data matching all queried WC rasterfiles"""
     # load dicts needed for all rasterfiles containing the class codes, key-confidences and buffer sizes
     confidence_dict = load_dict(CONFICENCEDICT, int)
     buffer_dict = load_dict(BUFFERSIZES, float)
@@ -396,6 +470,7 @@ async def main():
     logging.info("Successfully loaded info dicts")
 
     for rastertile in pathlib.Path(TERRADIR + "Maps/").rglob("*_Map.tif"):
+        # Iterate over all rasterfiles in the WC directory
         logging.info(f"Started with {rastertile.name}")
         # Get the year represented by the rasterfile and set Ohsome download date accordingly
         year = get_tileyear(rastertile)
@@ -418,20 +493,14 @@ async def main():
         if osm_data is not None:
             # convert vector data in raster data and save it
             write_as_raster(osm_data, rastertile, year)
-            # TODO: Einfach keins, wie im moment?
             logging.info(f"Finished with {rastertile.name}")
         else:
             logging.warning(
                 f"No OSM Data could be queried for Rastertile {rastertile.name} in year {time}\n"
             )
 
-    # TODO:
-    #  functionen weiter aufsplitten
-    #  comments und docstrings adden
-
 
 if __name__ == "__main__":
-    # warnings.filterwarnings("error")
     with open(LOGGCONFIG, "r") as f:
         config = yaml.safe_load(f.read())
         logging.config.dictConfig(config)
