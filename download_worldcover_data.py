@@ -279,7 +279,7 @@ def merge_tiles(
 
 def main():
     """Function sets temporary scratch directory and executes function to download WC
-     data"""
+    data"""
     path_terradir_scratch = pathlib.Path(TERRADIR + "scratch/")
 
     download_terrascope_data(path_terradir_scratch)
