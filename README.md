@@ -19,6 +19,15 @@ Key-Value-Pair and Buffer value must be divided by ```,```, not ```=```.\
 Width of lines must be the total width the line should be, not per Lane of road or radius.
 The required Unit is Meters.
 
+### Mapping Saturation Calculation
+As the filters defined in this repository are not default topics in the ohsome quality 
+API, the script ```calculate_oqapi.py``` does not work with public OQAPI. Therefore, it
+is recommended to set up a local OQAPI instance, define the Filters of this repository
+as topics, and use it for the calculation. For instructions on how to set up a local 
+OQAPI instance, see the 
+[Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
+
+
 ## Troubleshooting:
 ### Poetry Installation
 If Poetry fails to install with the following error message:
