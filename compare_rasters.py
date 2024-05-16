@@ -36,11 +36,21 @@ from download_worldcover_data import import_geodata
 
 
 def get_tileyear(file: pathlib.Path) -> str:
+    """
+    Determines the year which is represented by a WC rasterfile by its name
+    :param file: path to rasterfile
+    :return: string of the year
+    """
     year = file.stem[-23:-19]
     return year
 
 
 def get_tilename(file: pathlib.Path) -> str:
+    """
+    Determines the tile which is represented by a WC rasterfile by its name
+    :param file: path to rasterfile
+    :return: string of tile identifier
+    """
     name = file.stem[-13:-4]
     int(file.stem[-12:-9])
     int(file.stem[-7:-4])
@@ -48,52 +58,103 @@ def get_tilename(file: pathlib.Path) -> str:
 
 
 def get_osmyear(file: pathlib.Path) -> str:
+    """
+    Determines the year which is represented by an OSM rasterfile by its name
+    :param file: path to rasterfile
+    :return: string of the year
+    """
     year = file.stem[-4:]
     return year
 
 
 def get_osmtile(file: pathlib.Path) -> str:
+    """
+    Determines the tile which is represented by an OSM rasterfile by its name
+    :param file: path to rasterfile
+    :return: string of tile identifier
+    """
     name = file.stem[:-5]
     return name
 
 
-def get_wc_to_compare(raster, datapath):
+def get_wc_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathlib.Path or None:
+    """
+    Function which determines the respective WC raster for the year 2020 for a given WC
+    raster of the year 2021
+    :param raster: raster for which the respective WC raster of the year 2020 should be
+    found
+    :param datapath: path to dir of WC rasters
+    :return: path to respective WC raster of the year 2020 or None if no corresponding
+    raster exists
+    """
+    # iterate over all files in the directory and find the corresponding raster by
+    # matching tile identifier and year required
     for file in datapath.rglob("*_Map.tif"):
         year = get_tileyear(file)
         tile = get_tilename(file)
         if year == "2020" and tile == get_tilename(raster):
             return file
     logging.warning(
-        f"Could not find corresponding WorldCover Raster for WC File {raster}. Cannot compare WC Data"
+        f"Could not find corresponding WorldCover Raster for WC File {raster}. Cannot"
+        f"compare WC Data"
     )
     return None
 
 
-def get_other_to_compare(raster, datapath):
+def get_other_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathlib.Path or None:
+    """
+    Function which determines the respective OSM raster for the same year for a given WC
+    raster
+    :param raster: the WC raster for which the respective OSM raster should be found
+    :param datapath: path to dir of OSM rasters
+    :return: path to respective OSM raster of the same year or None if no corresponding
+    raster exists
+    """
+    # iterate over all files in the directory and find the corresponding raster by
+    # matching tile identifier and matching year
     for file in datapath.rglob("*.tif"):
         year = get_tileyear(raster)
         tile = get_tilename(raster)
         if year == get_osmyear(file) and tile == get_osmtile(file):
             return file
     logging.warning(
-        f"Could not find corresponding OSM Raster for WC File {raster}. Cannot compare Data between OSM and WC"
+        f"Could not find corresponding OSM Raster for WC File {raster}. Cannot compare"
+        f"Data between OSM and WC"
     )
     return None
 
 
-def get_osm_to_compare(raster, datapath):
+def get_osm_to_compare(raster: pathlib.Path, datapath: pathlib.Path)  -> pathlib.Path or None:
+    """
+    Function which determines the respective OSM raster for the year 2020 for a given
+    OSM raster of the year 2021
+    :param raster: raster for which the respective OSM raster of the year 2020 should be
+    found
+    :param datapath: path to dir of OSM rasters
+    :return: path to respective OSM raster of the year 2020 or None if no corresponding
+    raster exists
+    """
+    # iterate over all files in the directory and find the corresponding raster by
+    # matching tile identifier and year required
     for file in datapath.rglob("*.tif"):
         year = get_osmyear(file)
         tile = get_osmtile(file)
         if year == "2020" and tile == get_osmtile(raster):
             return file
     logging.warning(
-        f"Could not find corresponding OSM Raster for OSM File {raster}. Cannot compare OSM Data"
+        f"Could not find corresponding OSM Raster for OSM File {raster}. Cannot compare"
+        f"OSM Data"
     )
     return None
 
 
-def get_rasterdata(rasterpath, comparepath):
+def get_rasterdata(rasterpath: pathlib.Path, comparepath: pathlib.Path) -> tuple[np.array, np.array]:
+    """
+    Function to read raster data from two rasterfiles which should be compared
+    :param rasterpath: raster stating the new data
+    :param comparepath: base raster to which to compare against
+    :return: tuple of two numpy arrays containing the raster data
+    """
     with rasterio.open(rasterpath) as raster:
         rasterdata = raster.read()
     with rasterio.open(comparepath) as raster:
@@ -102,7 +163,16 @@ def get_rasterdata(rasterpath, comparepath):
     return rasterdata, comparedata
 
 
-def save_raster(data, path, crs, transform):
+def save_raster(data: np.array, path: pathlib.Path, crs, transform) -> None:
+    """
+    Function to save data of an array as a rasterfile
+    :param data: array of the data to be written as
+    :param path: path to the file to be written
+    :param crs: coordinate reference system of the raster
+    :param transform: affine transformation of the raster
+    :return: None
+    """
+    # create new raster file
     new_dataset = rasterio.open(
         path,
         "w",
@@ -115,22 +185,35 @@ def save_raster(data, path, crs, transform):
         transform=transform,
         compress="lzw",
     )
+    # write data into new file
     new_dataset.write(data)
     new_dataset.close()
 
 
-def detect_equality(rasterpath, comparepath, resultfile):
+def detect_equality(rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path) -> tuple[int, int, float, int, float, int, float, float, float]:
+    """
+    Function to detect equality of two rasterfiles a.k.a accuracy as well as determines
+    completeness of the files
+    :param rasterpath: path to the main raster
+    :param comparepath: path to the raster to be compared against
+    :param resultfile: path were new file will be created to indicate matching pixels
+    :return: tuple of all calculated statistics
+    """
+    # read in data of the rasters to be compared
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
-    # binary_change = np.equal(rasterdata, comparedata)
-    # use isclose with a tolerance of 0 as it can compare nan values (both nan -> no change)
+
+    # write 1 where rasterdata is equal to comparedata, 0 where not
+    # use np.isclose with a tolerance of 0 as it can compare nan values (both nan -> no
+    # change)
     binary_change = np.isclose(rasterdata, comparedata, rtol=0, atol=0, equal_nan=True)
+    # write binary change raster to drive
     with rasterio.open(rasterpath) as raster:
         save_raster(
             binary_change.astype(np.uint8), resultfile, raster.crs, raster.transform
         )
     logging.info(f"Wrote binary change raster {resultfile.name}")
 
-    # aggregate classes
+    # aggregate vegetation classes
     rasterdata = np.where(
         (rasterdata == 10)
         | (rasterdata == 20)
@@ -153,9 +236,11 @@ def detect_equality(rasterpath, comparepath, resultfile):
         120,
         comparedata,
     )
+    # write 1 where rasterdata is equal to comparedata, 0 where not
     binary_change_aggregated = np.isclose(
         rasterdata, comparedata, rtol=0, atol=0, equal_nan=True
     )
+    # write binary change raster of aggregated classes comparison to drive
     resultfile_aggregated = pathlib.Path(
         f"{resultfile.parent}/{resultfile.stem}_aggregated_classes.tif"
     )
@@ -169,17 +254,26 @@ def detect_equality(rasterpath, comparepath, resultfile):
     logging.info(f"Wrote binary change raster {resultfile_aggregated.name}")
 
     # calculate statistics
+
+    # total number of  pixels
     no_of_pixel = binary_change.size
+    # number of matching pixels
     pixel_matching = binary_change.sum()
+    # number of matching pixels for aggregated classes
     pixel_matching_aggregated = binary_change_aggregated.sum()
+    # percentage of matching pixels
     percentage_matching = pixel_matching / no_of_pixel * 100
+    # percentage of matching pixels for aggregated classes
     percentage_matching_aggregated = pixel_matching_aggregated / no_of_pixel * 100
-    # percentage_deviation = np.invert(binary_change).sum()/no_of_pixel*100
+    # number of nan pixels in comparedata
     nan_pixel_compare = np.count_nonzero(comparedata == 999)
+    # percentage of completeness of comparedata
     completeness_percentage_compare = 100 - ((nan_pixel_compare / no_of_pixel) * 100)
+    # percentage of matching pixels without nan values
     percentage_matching_no_nan = (
         pixel_matching / (no_of_pixel - nan_pixel_compare) * 100
     )
+    # percentage of matching pixels for aggregated classes without nan values
     percentage_matching_aggregated_no_nan = (
         pixel_matching_aggregated / (no_of_pixel - nan_pixel_compare) * 100
     )
@@ -199,36 +293,35 @@ def detect_equality(rasterpath, comparepath, resultfile):
     )
 
 
-def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
+def detect_loss_of_nature(rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path) -> np.array:
     """
-    Get "old" classification where raster was not classified as built up but is now.
-    :param rasterpath:
-    :param comparepath:
-    :param resultfile:
-    :return:
+    This functions detects pixels which changed from another LULC class or noData to
+    built-up in a dataset
+    :param rasterpath: raster of the newer year
+    :param comparepath: raster of the older year
+    :param resultfile: path for the new rasterfile to be created indicating change to
+    built-up
+    :return: an array with zeros where no change to built-up happened and the original
+    LULC class otherwise
     """
+    # read in data of the rasters to be compared
     rasterdata, comparedata = get_rasterdata(rasterpath, comparepath)
     # write 0 where class built-up was already present or is not present in newer dataset
     # write one where loss of nature was detected
     outputdata = np.where((rasterdata == 50) & (comparedata != 50), 1, 0)
 
-    # comment out majority filter
-    # only do if WC, not if OSM
-    # if rasterpath.stem[:3] == "ESA":
-    #     # majority filter
-    #     outputdata = majority(outputdata, cube(MAJORITY_SIZE))
-
     # reassign the original classes where loss of nature happened
     outputdata = np.where((outputdata == 1), comparedata, 0)
 
+    # write raster indicating change to built-up to drive
     with rasterio.open(rasterpath) as raster:
         save_raster(outputdata, resultfile, raster.crs, raster.transform)
     logging.info(
         f"Wrote raster indicating change of class to built up called {resultfile.name}"
     )
-    # write as vector
+    # write areas which changed from another class to built-up as vector
     loss_of_nature_vector(rasterpath, outputdata, resultfile)
-    # repeat for aggregated classes
+    # aggregated vegetation classes
     aggregated_data = np.where(
         (outputdata == 10)
         | (outputdata == 20)
@@ -240,6 +333,7 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
         120,
         outputdata,
     )
+    # write raster indicating change to built-up using aggregated classes to drive
     aggregated_outpath = pathlib.Path(
         f"{resultfile.parent}/{resultfile.stem}_aggregated_vegetation.tif"
     )
@@ -254,22 +348,35 @@ def detect_loss_of_nature(rasterpath, comparepath, resultfile) -> np.array:
     return aggregated_data
 
 
-def loss_of_nature_vector(sourcepath, data, resultfile):
+def loss_of_nature_vector(sourcepath: pathlib.Path, data: np.array, resultfile: pathlib.Path) -> None:
+    """
+    Function to write areas where change to the class built-up happened as vector data
+    :param sourcepath: path to the original rasterfile
+    :param data: array with zeroes where no such change occured and otherwise the
+    original class code
+    :param resultfile: path to the file to be written
+    :return: None
+    """
+    # get affine transformation of the original raster
     with rasterio.open(sourcepath) as raster:
         transform = raster.transform
+    # make a mask showing all areas where such change happened
     mask = data != 0
+    # get the shapes where change happened and the value the data shows at that place
     shapes = features.shapes(data.astype(np.uint16), mask=mask, transform=transform)
 
+    # create two lists for the class codes and the geometries for each shape
     classcode = []
     geometry = []
     for shapedict, value in shapes:
         classcode.append(value)
         geometry.append(shape(shapedict))
 
-    # build the gdf object over the two lists
+    # make a gdf from the geometries and values
     gdf = gpd.GeoDataFrame(
         {"old_class": classcode, "geometry": geometry}, crs="EPSG:4326"
     )
+    # combine vegetation classes
     if len(gdf) > 0:
         gdf["agg_vegetation"] = np.where(
             (gdf["old_class"] == 10)
@@ -306,6 +413,7 @@ def loss_of_nature_vector(sourcepath, data, resultfile):
         # reproject back to wgs 84
         gdf.to_crs(4326, inplace=True)
 
+        # write gdf as geojson file to drive
         outputpath = pathlib.Path(f"{resultfile.parent}/{resultfile.stem}.geojson")
 
         if not os.path.exists(resultfile.parent):
@@ -757,35 +865,55 @@ def adjusted_change_calculation(
     )
 
 
-def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True):
+def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True) -> None:
+    """
+    Main function to compare raster data between the years, between the data sets, and
+    comparing the change each data set indicates
+    :param compare_change: Bool to indicate if change between two years should be
+    compared
+    :param compare_wc: Bool to indicate if WorldCover data should be compared
+    :param compare_wc_osm: Bool to indicate if WorldCover and OSM data should be
+    compared per year
+    :param compare_osm: Bool to indicate if OSM data should be compared
+    :return: None
+    """
+
+    # set paths to raster files
     wc_datapath = pathlib.Path(TERRADIR + "Maps/")
     osm_datapath = pathlib.Path(OSMRASTER)
 
+    # if a dir instead of file is set as input: use all geojson files in this dir
     if len(INFILES) == 0:
         for filename in os.listdir(INPUTDIR):
             if filename.endswith(".geojson"):
                 INFILES.append(filename)
 
-    # create a vector which holds statistics for all raster
+    # create a vector GDF which holds statistics for all raster
     statistics = gpd.GeoDataFrame()
 
     file_counter = 0
+    # iterate over all input files
     for infile in INFILES:
         logging.info(f"Working on Inputfile {file_counter + 1} of {len(INFILES)}")
-        # import geodata of extent to be imported from WorldCover
+
+        # import geodata of AoIs
         gdf = import_geodata(INPUTDIR, infile)
 
+        # Iterate over all features in the AoI file
         for index in gdf.index:
             logging.info(f"Working on Feature {index+1} of {len(gdf)}")
 
-            # Take WC Raster to get extent from to create vector file and save statistics to it
+            # Get respective WC Raster to get extent from it in order to create a vector
+            # feature from it and save statistics to it
             rastername_finder = (
                 f"ESA_WorldCover_10m_2021_v200_f{file_counter:03}id{index:03}_Map.tif"
             )
             rasterpath = pathlib.Path(wc_datapath / rastername_finder)
+
             with rasterio.open(rasterpath) as raster:
                 bounds = raster.bounds
             box_geom = box(*bounds)
+
             # create a vector feature for this AoI to hold all stats and be merged into the general one
             feat_stats = gpd.GeoDataFrame(
                 {"file_no": file_counter, "feature_no": index, "geometry": box_geom},
@@ -799,7 +927,9 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 if attr != "geometry":
                     feat_stats[attr] = gdf.loc[[index]][attr][index]
 
+            # if the change per data set should be compared
             if compare_change:
+                # get raster paths for WC and OSM for both years each
                 rasterpath_wc = rasterpath
                 comparepath_wc = get_wc_to_compare(rasterpath, wc_datapath)
                 rastername_finder = f"f{file_counter:03}id{index:03}_2021.tif"
@@ -807,6 +937,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 rasterpath_osm = rasterpath
                 comparepath_osm = get_osm_to_compare(rasterpath, osm_datapath)
                 rasterpath = rasterpath_wc
+                # calculate change statistics on full changeset
                 (
                     feat_stats["change_accordance"],
                     feat_stats["change_accordance_2"],
@@ -815,7 +946,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 ) = compare_change_area(
                     rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
                 )
-
+                # calculate change statistics on adjusted changeset
                 (
                     feat_stats["wc_change_pixel"],
                     feat_stats["matching_pixel"],
@@ -828,13 +959,15 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                     rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
                 )
 
+            # if change in WC between two years should be compared
             if compare_wc:
+                # get raster path for file to be compared
                 comparepath = get_wc_to_compare(rasterpath, wc_datapath)
                 if comparepath is not None:
                     resultdir = WC_COMP_PATH
                     if not os.path.exists(resultdir):
                         os.makedirs(resultdir)
-                    # binary change
+                    # calculate binary change
                     resultfile = pathlib.Path(
                         resultdir + f"{get_tilename(rasterpath)}_wc_binary_change.tif"
                     )
@@ -846,7 +979,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                         feat_stats["WC_Match_Percent_Agg"],
                     ) = detect_equality(rasterpath, comparepath, resultfile)[0:5]
 
-                    # old classes have become built up
+                    # detect where classes have changed from another to built up
                     resultfile = pathlib.Path(
                         resultdir + f"{get_tilename(rasterpath)}_wc_loss_of_nature.tif"
                     )
@@ -857,10 +990,13 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                     logging.error(
                         f"Cannot find WC Raster to be compared with {rasterpath}"
                     )
+            # if the WC and OSM datasets per year should be compared
             if compare_wc_osm:
+                # iterate over both WC rasters, each representing one year
                 for rasterpath in wc_datapath.rglob(
                     f"*f{file_counter:03}id{index:03}_Map.tif"
                 ):
+                    # get the respective OSM raster to compare against
                     comparepath = get_other_to_compare(rasterpath, osm_datapath)
                     if comparepath is not None:
                         resultdir = WC_OSM_COMP_PATH
@@ -871,6 +1007,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                             resultdir
                             + f"{get_tilename(rasterpath)}_{tile_year}_wc_osm_binary_change.tif"
                         )
+                        # calculate completeness and accuracy of OSM dataset
                         results = detect_equality(rasterpath, comparepath, resultfile)
                         feat_stats[f"osm_acc_{tile_year}"] = results[2]
                         feat_stats[f"osm_acc_{tile_year}_no_nan"] = results[7]
@@ -917,7 +1054,9 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                         logging.error(
                             f"Cannot find OSM Raster to be compared with WC Raster {rasterpath}"
                         )
+            # if the OSM datasets should be compared
             if compare_osm:
+                # OSm raster for AoI and determine raster to be compared
                 rastername_finder = f"f{file_counter:03}id{index:03}_2021.tif"
                 rasterpath = pathlib.Path(osm_datapath / rastername_finder)
                 comparepath = get_osm_to_compare(rasterpath, osm_datapath)
@@ -925,7 +1064,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                     resultdir = OSM_COMP_PATH
                     if not os.path.exists(resultdir):
                         os.makedirs(resultdir)
-                    # binary change
+                    # calculate binary change
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_binary_change.tif"
                     )
@@ -936,7 +1075,7 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                         feat_stats["OSM_Match_Pixel_Agg"],
                         feat_stats["OSM_Match_Percent_Agg"],
                     ) = detect_equality(rasterpath, comparepath, resultfile)[0:5]
-                    # old classes have become built up
+                    # detect where classes have changed from another to built up
                     resultfile = pathlib.Path(
                         resultdir + f"{get_osmtile(rasterpath)}_osm_loss_of_nature.tif"
                     )
@@ -948,7 +1087,8 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                         f"Cannot find OSM Raster to be compared with {rasterpath}"
                     )
             if compare_wc and compare_osm:
-                # create confusion matrix with change to built-up between WC & OSM
+                # create confusion matrix whether change to built-up between WC & OSM
+                # agrees
                 create_cm(
                     aggregated_change_wc,
                     aggregated_change_osm,
@@ -956,8 +1096,11 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                     change_cm=True,
                 )
 
+            # add data frame of this AoI with all added statistics to data frame of all
+            # AoIs
             statistics = pd.concat([statistics, feat_stats], ignore_index=True)
 
+    # write data frame of all AoIs with added statistics as geojson file
     stats_outpath = pathlib.Path(f"{COMP_PATH}/statistics.geojson")
     with open(stats_outpath, "w") as file:
         file.write(statistics.to_json())
@@ -970,7 +1113,3 @@ if __name__ == "__main__":
         logging.config.dictConfig(config)
 
     main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True)
-
-    # TODO:
-    #  add logging
-    #  add typehint
