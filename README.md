@@ -32,6 +32,7 @@ be run by executing the [run_full_analysis.py](./run_full_analysis.py) file.
 - Adapted Version of the [Ohsome Quality API](https://github.com/GIScience/ohsome-quality-api)
 (see section 'Mapping Saturation Indicator Calculation' for further information)
 
+
 ### AoI Specification
 Up to 999 Inputfiles in the GeoJSON Format can be specified. Each file can hold multiple
 Polygons. Those must have an attribute 'id' with values from 0 to 999 allowed. 
@@ -40,6 +41,16 @@ have the following attributes assigned: "Population" (int), "X-Coordinate" (floa
 "Y-Coordinate"(float), "University" (boolean), and "Disposable Income" (int).
 
 
+### Mapping Saturation Indicator Calculation
+As the filters defined in this repository are not default topics in the ohsome quality 
+API (OQAPI), the script [calculate_oqapi.py](./calculate_oqapi.py) does not work with 
+public OQAPI. Therefore, it is recommended to set up a local OQAPI instance, define the 
+Filters used in this analysis as topics in OQAPI, and use it for the calculation. For 
+instructions on how to set up a local OQAPI instance, see the 
+[Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
+
+
+## Workflow Adaptaion Options 
 ### Filter Setting
 In order to define which OSM Features should be considered per LULC class, a filter was 
 defined per class. These filters can be adapted. However, the filter format must be
@@ -70,15 +81,6 @@ is used to define which features will be overwritten by other in the final map i
 features overlay each other. The higher the confidence level, the less likely the 
 feature will be overwritten by another feature and consequently the more likely the 
 feature will be represented in the final map.
-
-
-### Mapping Saturation Indicator Calculation
-As the filters defined in this repository are not default topics in the ohsome quality 
-API (OQAPI), the script [calculate_oqapi.py](./calculate_oqapi.py) does not work with 
-public OQAPI. Therefore, it is recommended to set up a local OQAPI instance, define the 
-Filters used in this analysis as topics in OQAPI, and use it for the calculation. For 
-instructions on how to set up a local OQAPI instance, see the 
-[Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
 
 
 ## Troubleshooting
