@@ -7,8 +7,8 @@ The thesis attempts to assess the temporal quality of OpenStreetMap (OSM) data i
 relation to land use/land cover (LULC) information. This is done using the example of 
 the expansion of built-up areas. For this purpose, LULC maps are created for the Areas 
 of Interest (AoI) from OSM data at two different points in time, which follow the class 
-definitions of the WorldCover (WC) data. The AoI sections are downloaded from the WC 
-data for the same two points in time to be used as reference data. The OSM-based maps 
+definitions of the WorldCover (WC) data. The AoI sections of the WC data are downloaded 
+for the same two points in time to be used as reference data. The OSM-based maps 
 are evaluated for completeness and accuracy in comparison to the WC data. It is also 
 determined to what percentage an expansion of the development corresponds in the 
 respective datasets. 
@@ -58,16 +58,30 @@ width. The tag and width must be divided by ```,```, not ```=```.\
 The Width of lines must be the stated as total width the line should be, not per Lane.
 The required Unit is Meters.
 
+#### Confidence Level Setting
+The file [keyconfidences.txt](./data/keyconfidences.txt) contains the confidence value 
+which will be assigned to each queried OSM feature based on the key used to query the 
+respective feature. When adapting the filter definitions, this file must be updated as 
+well. The file must contain an OSM key per line, paired with the to be associated level 
+of confidence. The key and confidence level must be divided by ```,```, not ```=```.\
+The confidence level must be an integer between 1 and 4. It defines the confidence that 
+features tagged with the respective key are associated with the correct LULC class. It 
+is used to define which features will be overwritten by other in the final map if 
+features overlay each other. The higher the confidence level, the less likely the 
+feature will be overwritten by another feature and consequently the more likely the 
+feature will be represented in the final map.
+
+
 ### Mapping Saturation Indicator Calculation
 As the filters defined in this repository are not default topics in the ohsome quality 
-API, the script [calculate_oqapi.py](./calculate_oqapi.py) does not work with public 
-OQAPI. Therefore, it is recommended to set up a local OQAPI instance, define the Filters
-used in this analysis as topics in OQAPI, and use it for the calculation. For 
+API (OQAPI), the script [calculate_oqapi.py](./calculate_oqapi.py) does not work with 
+public OQAPI. Therefore, it is recommended to set up a local OQAPI instance, define the 
+Filters used in this analysis as topics in OQAPI, and use it for the calculation. For 
 instructions on how to set up a local OQAPI instance, see the 
 [Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
 
 
-## Troubleshooting:
+## Troubleshooting
 ### Poetry Installation
 If Poetry fails to install the dependencies with the following error message:
 ```
