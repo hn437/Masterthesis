@@ -50,7 +50,7 @@ instructions on how to set up a local OQAPI instance, see the
 [Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
 
 
-## Workflow Adaptaion Options 
+## Workflow Adaption Options 
 ### Filter Setting
 In order to define which OSM Features should be considered per LULC class, a filter was 
 defined per class. These filters can be adapted. However, the filter format must be
