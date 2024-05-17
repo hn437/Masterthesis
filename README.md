@@ -54,7 +54,7 @@ check out the
 [topic documentation of OQAPI](https://github.com/GIScience/ohsome-quality-api/blob/main/docs/topic.md).
 
 
-## Workflow Adaption Options 
+## Adaption Options for OSM Feature Querying 
 ### Filter Setting
 In order to define which OSM Features should be considered per LULC class, a filter was 
 defined per class. These filters can be adapted. However, the filter format must be
