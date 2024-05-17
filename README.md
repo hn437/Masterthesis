@@ -7,10 +7,11 @@ The thesis attempts to assess the temporal quality of OpenStreetMap (OSM) data i
 relation to land use/land cover (LULC) information. This is done using the example of 
 the expansion of built-up areas. For this purpose, LULC maps are created for the Areas 
 of Interest (AoI) from OSM data at two different points in time, which follow the class 
-definition of the WorldCover (WC) data. The AoI sections are downloaded from the WC data
-for the same two points in time. The OSM-based maps are evaluated for completeness and 
-accuracy in comparison to the WC data. It is also determined to what percentage an 
-expansion of the development corresponds in the respective datasets. 
+definitions of the WorldCover (WC) data. The AoI sections are downloaded from the WC 
+data for the same two points in time to be used as reference data. The OSM-based maps 
+are evaluated for completeness and accuracy in comparison to the WC data. It is also 
+determined to what percentage an expansion of the development corresponds in the 
+respective datasets. 
 In addition, the calculation of the mapping saturation indicator of the Ohsome Quality 
 API is used to calculate how completely the respective LULC classes are mapped in the 
 OSM maps and a correlation analysis is carried out between the characteristics of the 
