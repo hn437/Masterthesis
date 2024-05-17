@@ -29,7 +29,8 @@ be run by executing the [run_full_analysis.py](./run_full_analysis.py) file.
 - Python >=3.9, <=3.11
 - Poetry installed as Python Package Manager
 - User Account for Terrascope Platform
-- Adapted Version of the [Ohsome Quality API](https://github.com/GIScience/ohsome-quality-api)
+- Adapted Version of the 
+[Ohsome Quality API](https://github.com/GIScience/ohsome-quality-api)
 (see section 'Mapping Saturation Indicator Calculation' for further information)
 
 
@@ -45,9 +46,12 @@ have the following attributes assigned: "Population" (int), "X-Coordinate" (floa
 As the filters defined in this repository are not default topics in the ohsome quality 
 API (OQAPI), the script [calculate_oqapi.py](./calculate_oqapi.py) does not work with 
 public OQAPI. Therefore, it is recommended to set up a local OQAPI instance, define the 
-Filters used in this analysis as topics in OQAPI, and use it for the calculation. For 
+filters used in this analysis as topics in OQAPI, and use it for the calculation. For 
 instructions on how to set up a local OQAPI instance, see the 
-[Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api).
+[Ohsome Quality API Repository](https://github.com/GIScience/ohsome-quality-api). Each 
+filter must be defined as a topic in OQAPI. Fur further information on OQAPI topics, 
+check out the 
+[topic documentation of OQAPI](https://github.com/GIScience/ohsome-quality-api/blob/main/docs/topic.md).
 
 
 ## Workflow Adaption Options 
