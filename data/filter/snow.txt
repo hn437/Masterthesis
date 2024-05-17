@@ -1,0 +1,1 @@
+landcover=ice or natural=crevasse or natural=glacier or surface=ice or surface=snow
