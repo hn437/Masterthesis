@@ -28,7 +28,7 @@ be run by executing the [run_full_analysis.py](./run_full_analysis.py) file.
 ### General Requirements
 - Python >=3.9, <=3.11
 - Poetry installed as Python Package Manager
-- User Account for Terrascope Platform
+- User Account for [Terrascope Platform](https://terrascope.be/en)
 - Adapted Version of the 
 [Ohsome Quality API](https://github.com/GIScience/ohsome-quality-api)
 (see section 'Mapping Saturation Indicator Calculation' for further information)
