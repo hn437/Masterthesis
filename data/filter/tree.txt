@@ -1,0 +1,2 @@
+landcover=forest or landcover=trees or landcover=woodland or landuse=forest or landuse=orchard or natural=forest or natural=tree or natural=tree_row or natural=wood or wetland=swamp or wood=* or wood=yes
+natural=tree_row

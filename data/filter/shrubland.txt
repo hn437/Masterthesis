@@ -1,0 +1,2 @@
+barrier=hedge or landcover=greenery or landcover=shrubland or landuse=greenery or natural=heath or natural=scrub or natural=shrubbery
+barrier=hedge

@@ -1,0 +1,1 @@
+grass=* or grassland=* or landcover=flowers or landcover=grass or landcover=grassland or landuse=allotments or landuse=flowerbed or landuse=flowers or landuse=grass or landuse=meadow or landuse=plants or landuse=village_green or landuse=vineyard or leisure=garden or leisure=golf_course or natural=fell or natural=grass or natural=grassland or surface=grass

@@ -1,5 +1,6 @@
 aeroway,1
 amenity,1
+barrier,1
 building,4
 cycleway,4
 highway,4
@@ -7,7 +8,9 @@ landcover,2
 landuse,2
 leisure,1
 man_made,4
+natural,2
 office,4
 railway,2
 shop,4
 surface,4
+waterway,4

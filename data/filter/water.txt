@@ -1,0 +1,2 @@
+landcover=water or landuse=aquaculture or landuse=pond or landuse=reservoir or natural=reef or natural=shoal or natural=strait or natural=water or place=ocean or place=sea or water=* or water=pond or water=reservoir or waterway=canal or waterway=lock or waterway=river or waterway=riverbank or waterway=stream or wetland=tidalflat
+waterway=canal or waterway=river or waterway=stream
