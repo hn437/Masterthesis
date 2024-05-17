@@ -77,7 +77,9 @@ def get_osmtile(file: pathlib.Path) -> str:
     return name
 
 
-def get_wc_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathlib.Path or None:
+def get_wc_to_compare(
+    raster: pathlib.Path, datapath: pathlib.Path
+) -> pathlib.Path or None:
     """
     Function which determines the respective WC raster for the year 2020 for a given WC
     raster of the year 2021
@@ -101,7 +103,9 @@ def get_wc_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathlib.P
     return None
 
 
-def get_other_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathlib.Path or None:
+def get_other_to_compare(
+    raster: pathlib.Path, datapath: pathlib.Path
+) -> pathlib.Path or None:
     """
     Function which determines the respective OSM raster for the same year for a given WC
     raster
@@ -124,7 +128,9 @@ def get_other_to_compare(raster: pathlib.Path, datapath: pathlib.Path) -> pathli
     return None
 
 
-def get_osm_to_compare(raster: pathlib.Path, datapath: pathlib.Path)  -> pathlib.Path or None:
+def get_osm_to_compare(
+    raster: pathlib.Path, datapath: pathlib.Path
+) -> pathlib.Path or None:
     """
     Function which determines the respective OSM raster for the year 2020 for a given
     OSM raster of the year 2021
@@ -148,7 +154,9 @@ def get_osm_to_compare(raster: pathlib.Path, datapath: pathlib.Path)  -> pathlib
     return None
 
 
-def get_rasterdata(rasterpath: pathlib.Path, comparepath: pathlib.Path) -> tuple[np.array, np.array]:
+def get_rasterdata(
+    rasterpath: pathlib.Path, comparepath: pathlib.Path
+) -> tuple[np.array, np.array]:
     """
     Function to read raster data from two rasterfiles which should be compared
     :param rasterpath: raster stating the new data
@@ -190,7 +198,9 @@ def save_raster(data: np.array, path: pathlib.Path, crs, transform) -> None:
     new_dataset.close()
 
 
-def detect_equality(rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path) -> tuple[int, int, float, int, float, int, float, float, float]:
+def detect_equality(
+    rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path
+) -> tuple[int, int, float, int, float, int, float, float, float]:
     """
     Function to detect equality of two rasterfiles a.k.a accuracy as well as determines
     completeness of the files
@@ -293,7 +303,9 @@ def detect_equality(rasterpath: pathlib.Path, comparepath: pathlib.Path, resultf
     )
 
 
-def detect_loss_of_nature(rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path) -> np.array:
+def detect_loss_of_nature(
+    rasterpath: pathlib.Path, comparepath: pathlib.Path, resultfile: pathlib.Path
+) -> np.array:
     """
     This functions detects pixels which changed from another LULC class or noData to
     built-up in a dataset
@@ -348,7 +360,9 @@ def detect_loss_of_nature(rasterpath: pathlib.Path, comparepath: pathlib.Path, r
     return aggregated_data
 
 
-def loss_of_nature_vector(sourcepath: pathlib.Path, data: np.array, resultfile: pathlib.Path) -> None:
+def loss_of_nature_vector(
+    sourcepath: pathlib.Path, data: np.array, resultfile: pathlib.Path
+) -> None:
     """
     Function to write areas where change to the class built-up happened as vector data
     :param sourcepath: path to the original rasterfile
@@ -432,9 +446,26 @@ def loss_of_nature_vector(sourcepath: pathlib.Path, data: np.array, resultfile: 
 
 
 def create_cm(
-    rasterdata, comparedata, tilename, year=None, aggregated=False, change_cm=False
-):
-    # calculate confusion matrix. First Position: actual, Second: predicted
+    rasterdata: np.array,
+    comparedata: np.array,
+    tilename: str,
+    year: str = None,
+    aggregated: bool = False,
+    change_cm: bool = False,
+) -> dict:
+    """
+    A function to create confusion matrices for the comparison of two datasets
+    :param rasterdata: the WC data
+    :param comparedata: the OSM data
+    :param tilename: tile/AoI identifier
+    :param year: the year the input data represents
+    :param aggregated: bool which defines whether the vegetation classes should be
+    aggregated
+    :param change_cm: bool which defines whether the confusion matrix is created based
+    on change indication to built-up instead of class values
+    :return: dictionary with the precision and recall value of the built-up class
+    """
+    # convert no data to the value 999
     actual_raw = np.nan_to_num(rasterdata.flatten(), nan=999)
     del rasterdata
     pred_raw = np.nan_to_num(comparedata.flatten(), nan=999)
@@ -444,6 +475,7 @@ def create_cm(
     actual = actual_raw[pred_raw != 999]
     pred = pred_raw[pred_raw != 999]
 
+    # aggregate vegetation classes if required
     if aggregated:
         actual = np.where(
             (actual == 10)
@@ -472,6 +504,8 @@ def create_cm(
     df_confusion_pandas = pd.crosstab(
         actual, pred, rownames=["WC Classes"], colnames=["OSM Classes"], margins=True
     )
+    # set index and columns to be in the correct order and showing all classes,
+    # depending on the type of comparison made
     if aggregated:
         index_WC = [120, 50, 60, 70, 80, "All"]
         columns_OSM = [120, 50, 60, 70, 80, "All"]
@@ -488,6 +522,7 @@ def create_cm(
         fill_value=0,
     )
 
+    # create CM Plot showing absolute numbers
     fig, ax = plt.subplots(figsize=(20, 15))
     cm_map = sns.heatmap(
         df_confusion_pandas,
@@ -507,6 +542,7 @@ def create_cm(
         spine.set_linewidth(border_linewidth)
     if not os.path.exists(CM_PATH):
         os.makedirs(CM_PATH)
+    # set title depending on the type of comparison made
     if aggregated:
         plt.title(
             f"Confusion Matrix stating No. of Pixel for aggregated Classes (WC vs. OSM {year}) ({tilename})"
@@ -526,6 +562,7 @@ def create_cm(
         save_path_norm = pathlib.Path(
             f"{CM_PATH}/{tilename}_CM_WCvsOSM_{year}_absolut.png"
         )
+    # save figure to drive
     plt.savefig(save_path_norm)
     plt.close()
     del df_confusion_pandas
@@ -542,6 +579,7 @@ def create_cm(
         ax=ax,
     )
     cm_display.ax_.set(xlabel="OSM Classes", ylabel="WC Classes")
+    # set title depending on the type of comparison made
     if aggregated:
         plt.title(
             f"Confusion Matrix stating relative Values for aggregated Classes (WC vs. OSM {year}) ({tilename})"
@@ -573,10 +611,12 @@ def create_cm(
             f"Wrote Confusion Matrices for year {year}, aggregation={aggregated}"
         )
 
+    # create classification report
     cm_report = classification_report(actual, pred, zero_division=0, output_dict=False)
     cm_report_dict = classification_report(
         actual, pred, zero_division=0, output_dict=True
     )
+    # write classification report to drive
     if aggregated:
         save_path_report = pathlib.Path(
             f"{CM_PATH}/{tilename}_CM_WCvsOSM_aggregated_{year}_Report.txt"
@@ -594,57 +634,83 @@ def create_cm(
     return cm_report_dict.get("50")
 
 
-def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm):
+def compare_change_area(
+    rasterpath_wc: pathlib.Path,
+    comparepath_wc: pathlib.Path,
+    rasterpath_osm: pathlib.Path,
+    comparepath_osm: pathlib.Path,
+) -> tuple[float, float, int, int]:
+    """
+    A function which calculates the accordance of change to the class built-up between
+    two datasets, so whether the change is indicated for the same pixels in both
+    datasets. It also calculates the number of pixels where change to built-up happened
+    per dataset and creates confusion matrices for the accordance of change to built-up
+    :param rasterpath_wc: path to the WC raster of the newer year
+    :param comparepath_wc: path to the WC raster of the older year
+    :param rasterpath_osm: path to the OSM raster of the newer year
+    :param comparepath_osm: path to the OSM raster of the older year
+    :return: tuple of the accordance of change to built-up (percentage of change in WC
+    for which change is indicated in OSM as well), accordance_2 (percentage of change in
+    WC for which class built-up is present in newer OSM raster), number of pixels which
+    changed to built-up in WC and number of pixels which changed to built-up in OSM
+    """
+    # get tile/AoI identifier
     tilename = get_tilename(rasterpath_wc)
+    # read in data of the rasters to be compared
     rasterdata_wc, comparedata_wc = get_rasterdata(rasterpath_wc, comparepath_wc)
     rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
     del rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
 
-    # write 0 where class built-up was already present or is not present in newer dataset
-    # write 1 where change to built-up happened
+    # For WC Data: write 0 where class built-up was already present or is not present in
+    # newer dataset, write 1 where change to built-up happened
     changedata_wc = np.where((rasterdata_wc == 50) & (comparedata_wc != 50), 1, 0)
-
-    # comment out majority filter
-    # changedata_wc = majority(changedata_wc, cube(MAJORITY_SIZE))
-
     del rasterdata_wc, comparedata_wc
+
+    # For OSM Data: write 0 where class built-up was already present or is not present
+    # in newer dataset, write 1 where change to built-up happened
     changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
 
-    # also get a file which has Yes wherever WC changed to built up and OSM is built up
-    #  in newer file
+    # also create an array with Yes wherever WC changed to built up and OSM is built up
+    # in newer file. Used for acordance_2 calculation
     wc_changed_built = np.where(
         (changedata_wc == 1) & (rasterdata_osm == 50), "Yes", "No"
     )
     del rasterdata_osm, comparedata_osm
-    # write No where class built-up was already present or is not present in newer dataset
-    # write Yes where change to built-up happened
+
+    # write No where class built-up was already present or is not present in newer
+    # dataset, write Yes where change to built-up happened
     changedata_wc = np.where(changedata_wc == 1, "Yes", "No")
     changedata_osm = np.where(changedata_osm == 1, "Yes", "No")
 
+    # mask out (=ignore) pixels where no change happened in both datasets
     changedata_wc_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_wc
     )
     changedata_osm_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_osm
     )
-    # only mask to where change in WC happened, as we only check whether the newer OSM
-    #  data is built-up, but not if actual change happened.
+
+    # only mask to where change in WC happened, as only whether the newer OSM data is
+    # built-up is of interest in accordance_2, not if actual change happened
     wc_changed_built_masked = np.ma.masked_where(
         changedata_wc == "No", wc_changed_built
     )
     del changedata_wc, changedata_osm, wc_changed_built
 
+    # replace nan values with 999
     actual = np.nan_to_num(changedata_wc_masked.flatten(), nan=999)
     pred = np.nan_to_num(changedata_osm_masked.flatten(), nan=999)
     pred_2 = np.nan_to_num(wc_changed_built_masked.flatten(), nan=999)
     del changedata_wc_masked, changedata_osm_masked, wc_changed_built_masked
 
-    # create confusion Matrix using No. of Pixel
+    # create confusion Matrix using No. of Pixel indicating change
     df_confusion_pandas = pd.crosstab(
         actual, pred, rownames=["WC Change"], colnames=["OSM Change"]
     )
     del pred
 
+    # create confusion Matrix using No. of Pixel indicating change to built-up in WC and
+    # whether built-up is present for those pixels in OSM
     df_confusion_pandas_2 = pd.crosstab(
         actual, pred_2, rownames=["WC Change"], colnames=["OSM Built Up"]
     )
@@ -673,6 +739,7 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
     plt.title(
         f"Confusion Matrix stating if Change to Built-Up is in Accordance in both Datasets ({tilename})"
     )
+    # save cm plot to drive
     save_path_norm = pathlib.Path(f"{CM_PATH}/{tilename}_compare_change_area.png")
     plt.savefig(save_path_norm)
     plt.close()
@@ -691,7 +758,10 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
             / (df_confusion_pandas_2.values[0][0] + df_confusion_pandas_2.values[0][1])
             * 100
         )
-    except:
+    except IndexError or ZeroDivisionError:
+        # if some quadrants of the cm are 0/not available, set accordance values per
+        # hand depending on which values are not present. This avoids ZeroDivisionError
+        # or IndexError
         if (
             df_confusion_pandas.axes[0][0] == "Yes"
             and df_confusion_pandas.axes[1][0] == "No"
@@ -707,43 +777,76 @@ def compare_change_area(rasterpath_wc, comparepath_wc, rasterpath_osm, comparepa
         else:
             logging.error(f"Could not calculate accordance for tile {tilename}")
     try:
-        try:
-            osm_pixel_no_to_built = df_confusion_pandas["Yes"].sum()
-        except:
-            osm_pixel_no_to_built = 0
-        try:
-            wc_pixel_no_to_built = df_confusion_pandas.loc["Yes"].sum()
-        except:
-            wc_pixel_no_to_built = 0
-    except:
-        logging.error(
-            f"Could not calculate number of pixels changed to built up for tile {tilename}"
+        # Calculate how many pixels changed to built-up in WC and in OSM
+        osm_pixel_no_to_built = (
+            df_confusion_pandas["Yes"].sum() if "Yes" in df_confusion_pandas else 0
         )
+        wc_pixel_no_to_built = (
+            df_confusion_pandas.loc["Yes"].sum()
+            if "Yes" in df_confusion_pandas.index
+            else 0
+        )
+    except Exception as e:
+        logging.error(
+            f"Could not calculate number of pixels changed to built-up for tile {tilename}: {e}"
+        )
+
     del df_confusion_pandas, df_confusion_pandas_2
 
+    # return the calculated statistics
     return accordance, accordance_2, wc_pixel_no_to_built, osm_pixel_no_to_built
 
 
 def adjusted_change_calculation(
-    rasterpath_wc, comparepath_wc, rasterpath_osm, comparepath_osm
-):
+    rasterpath_wc: pathlib.Path,
+    comparepath_wc: pathlib.Path,
+    rasterpath_osm: pathlib.Path,
+    comparepath_osm: pathlib.Path,
+) -> tuple[int, int, int, int, float, float, float]:
+    """
+    A function which calculates the accordance of change to the class built-up between
+    two datasets, so whether the change is indicated for the same pixels in both
+    datasets. However, all WC change indicating pixels which are already class built-up
+    in older OSM data are ignored -> calculating accordance_3
+    :param rasterpath_wc: path to the WC raster of the newer year
+    :param comparepath_wc: path to the WC raster of the older year
+    :param rasterpath_osm: path to the OSM raster of the newer year
+    :param comparepath_osm: path to the OSM raster of the older year
+    :return: tuple of number of pixels which changed to built-up in WC but were not
+    built-up in older OSM data, number of pixels indicating change in both datasets,
+    number of pixels where no OSM data is available but WC indicates change, number of
+    pixels where another class than built-up is present in newer OSM data for WC change,
+    accordance_3 (percentage of change in WC for which change is indicated in OSM, but
+    all change indicating Pixels in WC which were already built-up in the older OSM are
+    ignored), percentage of change in WC for which no OSM data is available, percentage
+    of change in WC for which another class than built-up is present in newer OSM data
+    """
+    # get tile/AoI identifier
     tilename = get_tilename(rasterpath_wc)
+    # read in data of the rasters to be compared
     rasterdata_wc, comparedata_wc = get_rasterdata(rasterpath_wc, comparepath_wc)
     rasterdata_osm, comparedata_osm = get_rasterdata(rasterpath_osm, comparepath_osm)
     del comparepath_wc, rasterpath_osm, comparepath_osm
 
-    # write 0 where class built-up was already present or is not present in newer dataset
+    # For WC Data: write 0 where class built-up was already present or is not present in
+    # newer dataset. Write 0 where class built-up was already present in older OSM data.
     # write 1 where change to built-up happened but was not present in older OSM data
     changedata_wc = np.where(
         (rasterdata_wc == 50) & (comparedata_wc != 50) & (comparedata_osm != 50), 1, 0
     )
+
+    # Reassign the original LULC class value whereever change to built-up happened,
+    # otherwise write value 0
     changedata_wc_orig_vals = np.where((changedata_wc == 1), comparedata_wc, 0)
 
     resultfile = pathlib.Path(
         WC_COMP_PATH + f"{tilename}_wc_loss_of_nature_adjusted.tif"
     )
+    # write vector file where change happened in WC with original class values that
+    # changed to built-up
     loss_of_nature_vector(rasterpath_wc, changedata_wc_orig_vals, resultfile)
 
+    # count pixels where change to built-up happened in WC
     wc_change_pixel = np.count_nonzero(changedata_wc)
     del (
         rasterpath_wc,
@@ -753,23 +856,25 @@ def adjusted_change_calculation(
         resultfile,
     )
 
+    # determine where change to built-up happened in OSM
     changedata_osm = np.where((rasterdata_osm == 50) & (comparedata_osm != 50), 1, 0)
 
-    # dort wo WC change und OSM nicht, schreibe neuen OSM value sonst 0
+    # whereever WC indicates change but OSM doesn't, write OSM value of the new year
     osm_vals_where_wc_change = np.where(
         (changedata_wc == 1) & (changedata_osm == 0), rasterdata_osm, 0
     )
+    # create dict of how often a class was assigned, therefore which class is present in
+    # OSM where no change is indicated by OSM but by WC
     unique, counts = np.unique(osm_vals_where_wc_change, return_counts=True)
     osm_where_wc_change = dict(zip(unique, counts))
-
     # remove value 0 (=where no WC change happened)
     osm_where_wc_change.pop(0, None)
     # get value how many pixels are no_data in OSM where WC has change
     no_osm_data_for_change = osm_where_wc_change[999]
-
     # remove all OSM_nodata for WC change pixels
     osm_where_wc_change.pop(999, None)
-    # calculate how many osm pixels have a class but not built-up where WC has change to built-up
+    # calculate how many osm pixels have a class but not built-up where WC has change to
+    # built-up
     other_osm_class_for_change = sum(osm_where_wc_change.values())
     del (
         rasterdata_osm,
@@ -780,11 +885,12 @@ def adjusted_change_calculation(
         osm_where_wc_change,
     )
 
-    # write No where class built-up was already present or is not present in newer dataset
-    # write Yes where change to built-up happened
+    # write No where class built-up was already present or is not present in newer
+    # dataset, write Yes where change to built-up happened
     changedata_wc = np.where(changedata_wc == 1, "Yes", "No")
     changedata_osm = np.where(changedata_osm == 1, "Yes", "No")
 
+    # mask out (=ignore) pixels where no change happened in both datasets
     changedata_wc_masked = np.ma.masked_where(
         np.logical_and(changedata_wc == "No", changedata_osm == "No"), changedata_wc
     )
@@ -793,6 +899,7 @@ def adjusted_change_calculation(
     )
     del changedata_wc, changedata_osm
 
+    # replace nan values with 999
     actual = np.nan_to_num(changedata_wc_masked.flatten(), nan=999)
     pred = np.nan_to_num(changedata_osm_masked.flatten(), nan=999)
     del changedata_wc_masked, changedata_osm_masked
@@ -826,6 +933,7 @@ def adjusted_change_calculation(
     plt.title(
         f"Confusion Matrix stating if adjusted Change to Built-Up is matching in both Datasets ({tilename})"
     )
+    # save cm plot to drive
     save_path_norm = pathlib.Path(
         f"{CM_PATH}/{tilename}_compare_adjusted_change_area.png"
     )
@@ -833,8 +941,11 @@ def adjusted_change_calculation(
     plt.close()
 
     try:
+        # calculating number of pixels indicating changed to built-up in both datasets
         matching_pixel = df_confusion_pandas.values[1][1]
-    except:
+    except IndexError:
+        # if some quadrants of the cm are 0 / not available, set number of matching
+        # pixels per hand depending on which values are not present
         if (
             df_confusion_pandas.axes[0][0] == "Yes"
             and df_confusion_pandas.axes[1][0] == "No"
@@ -848,8 +959,12 @@ def adjusted_change_calculation(
         else:
             logging.error(f"Could not calculate accordance for tile {tilename}")
 
+    # calculate percentage of matching pixels = accordance_3 value
     matching_percent = matching_pixel / wc_change_pixel * 100
+    # calculate percentage of pixels where no OSM data is available for WC change
     no_osm_data_for_change_percent = no_osm_data_for_change / wc_change_pixel * 100
+    # calculate percentage of pixels where another class than built-up is present in OSM
+    # where WC indicates change to built-up
     other_osm_class_for_change_percent = (
         other_osm_class_for_change / wc_change_pixel * 100
     )
@@ -865,7 +980,12 @@ def adjusted_change_calculation(
     )
 
 
-def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=True) -> None:
+def main(
+    compare_change: bool = True,
+    compare_wc: bool = True,
+    compare_wc_osm: bool = True,
+    compare_osm: bool = True,
+) -> None:
     """
     Main function to compare raster data between the years, between the data sets, and
     comparing the change each data set indicates
@@ -914,14 +1034,15 @@ def main(compare_change=True, compare_wc=True, compare_wc_osm=True, compare_osm=
                 bounds = raster.bounds
             box_geom = box(*bounds)
 
-            # create a vector feature for this AoI to hold all stats and be merged into the general one
+            # create a vector feature for this AoI to hold all stats and be merged into
+            # the general one
             feat_stats = gpd.GeoDataFrame(
                 {"file_no": file_counter, "feature_no": index, "geometry": box_geom},
                 crs="EPSG:4326",
                 index=[0],
             )
 
-            # add attributes for feature from input file except do not overwrite geometry
+            # add attributes for feature from input file but do not overwrite geometry
             for i in range(len(gdf.loc[[index]].axes[1])):
                 attr = gdf.loc[[index]].axes[1][i]
                 if attr != "geometry":
